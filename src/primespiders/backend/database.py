@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from primespiders.utils.clients import get_postgres
+from src.primespiders.utils.clients import get_postgres
 
 
 class SQLMixin:

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Literal
 
-from primespiders.utils.urls import URL
+from src.primespiders.utils.urls import URL
 
 
 class Rules(Enum):
