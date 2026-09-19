@@ -2,9 +2,9 @@ from src.primespiders.utils.operators import Q, Rules
 from src.primespiders.utils.urls import URL
 
 
-def url_empty(value: URL):
+def url_empty(url: URL):
     """Check if the URL is empty."""
-    return Q(Rules.EMPTY, value)
+    return Q(Rules.EMPTY)(url)
 
 
 def has_fragment(value: URL):
@@ -21,3 +21,19 @@ def is_file(value: URL):
     """Check if the URL points to a file (e.g., ends with a file extension)"""
     path = value.parsed_url.path
     return '.' in path.split('/')[-1]
+
+
+def ignore_social_media(url: URL):
+    """Check if the URL belongs to a social media domain."""
+    social_media_domains = [
+        "facebook",
+        "twitter",
+        "instagram",
+        "linkedin",
+        "tiktok",
+        "youtube",
+        "spotify",
+        "pinterest",
+        "snapchat",
+    ]
+    return any(domain in url for domain in social_media_domains)

@@ -15,6 +15,7 @@ async def test_bershka_spider():
         page = await browser.new_page()
 
         spider = Bershka(page)
+        spider.start_url = 'https://www.bershka.com/fr/minijupe-en-jean-c0p227263455.html?colorId=428'
         await spider.run()
 
         assert spider is not None

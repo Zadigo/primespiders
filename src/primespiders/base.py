@@ -142,7 +142,14 @@ class BaseSpider(ABC):
         """
 
         def evaluate_func[T = Callable[[URL], bool] | BaseCondition](url: URL, value: T) -> bool:
+            logger.info(url)
             result: T = value(url)
+
+            if not isinstance(result, (bool, BaseCondition)):
+                raise TypeError(
+                    "Expected bool or BaseCondition for "
+                    f"filter function {value}, got {type(result)}"
+                )
 
             if isinstance(result, BaseCondition):
                 result = result.resolve()

@@ -38,6 +38,9 @@ class Q(BaseCondition):
         self.value = value
 
     def __call__(self, url: URL):
+        if not isinstance(url, URL):
+            raise TypeError("Invalid URL provided.")
+        
         self.url = url
         return self
 
@@ -67,9 +70,9 @@ class Q(BaseCondition):
             case Rules.ENDS_WITH:
                 return self.url.endswith(self.value)
             case Rules.EMPTY:
-                return not self.url
+                return not self.url or self.url.raw_url == ""
             case Rules.NOT_EMPTY:
-                return bool(self.url)
+                return bool(self.url and self.url.raw_url != "")
             case Rules.LIKE:
                 # Implement your LIKE logic here
                 pass
