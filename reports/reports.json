@@ -3,9 +3,11 @@
 {"nodeid": "backend", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "components/bershka", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "components", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
+{"nodeid": "downloads", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "primespiders-coverage", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "reports", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "tests/test_base_spider.py", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
+{"nodeid": "tests/test_live_spider.py", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "tests/test_observer.py::TestPerformanceObserver", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "tests/test_observer.py", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}
 {"nodeid": "tests/test_operators.py::TestQ", "outcome": "passed", "longrepr": null, "result": null, "sections": [], "$report_type": "CollectReport"}

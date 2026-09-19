@@ -91,11 +91,7 @@ class PerformanceObserver(Observer):
                 ) * 100
 
             # Check the started on timestamp and update if necessary
-            started_on = redis_db.hget(
-                storage_key,
-                'performance',
-                'started_on'
-            )
+            started_on = redis_db.hget(storage_key, 'started_on')
             if started_on is None:
                 d = str(datetime.datetime.now(tz=datetime.UTC))
                 redis_db.hset(

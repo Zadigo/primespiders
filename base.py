@@ -59,6 +59,9 @@ class BaseSpider(ABC):
         self.signals.attach(PerformanceObserver())
         self.signals.attach(HistoryObserver())
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__} job_uuid={self.job_uuid}>"
+
     @property
     def get_url_filters(self):
         return self.url_filters
@@ -215,7 +218,7 @@ class BaseSpider(ABC):
                 await self.on_page_actions(current_url)
                 await self.signals.notify(current_url=next_url)
 
-                if os.environ.get('PRIMESPIDERS_ENV') == 'test':
+                if os.environ.get('DEBUG') == 'True':
                     can_crawl = False
                     break
 

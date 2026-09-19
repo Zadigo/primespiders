@@ -1,18 +1,27 @@
 import argparse
 import asyncio
 import inspect
+import os
+import pathlib
 from importlib import import_module
 
 from playwright.async_api import async_playwright
 
 from base import BaseSpider
 
+BASE_DIR = pathlib.Path(__file__).parent.resolve()
+
 
 async def main(app_name: str, headless: bool):
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        browser = await p.chromium.launch(
+            headless=headless,
+            downloads_path=BASE_DIR.joinpath("downloads"),
+            timeout=60000,
+        )
+
         page = await browser.new_page()
-        # await app(page)
+        await page.wait_for_selector('body')
 
         try:
             mod = import_module(f'primespiders.components.{app_name}.app')
@@ -46,5 +55,14 @@ if __name__ == '__main__':
         help="Run browser in headless mode"
     )
 
+    parser.add_argument(
+        "--debug",
+        type=str,
+        help="The name of the app to run"
+    )
+
     args = parser.parse_args()
+    if args.debug:
+        os.environ.setdefault("DEBUG", "True")
+
     asyncio.run(main(args.spider, headless=args.headless))
