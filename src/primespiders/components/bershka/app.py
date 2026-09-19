@@ -1,8 +1,7 @@
+from primespiders.base import BaseSpider, EcommerceMixin
+from primespiders.components.bershka.url_filters import remove_static_page
 from primespiders.url_filters import has_fragment, has_query, url_empty
-
-from base import BaseSpider, EcommerceMixin
-from components.bershka.url_filters import remove_static_page
-from utils.operators import And, PartTest, Q, Rules
+from primespiders.utils.operators import And, PartTest, Q, Rules
 
 
 class Bershka(EcommerceMixin, BaseSpider):

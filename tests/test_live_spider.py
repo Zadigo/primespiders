@@ -3,7 +3,7 @@ import os
 import pytest
 from playwright.async_api import async_playwright
 
-from primespiders.components.bershka.app import Bershka
+from src.primespiders.components.bershka.app import Bershka
 
 os.environ.setdefault("DEBUG", "True")
 

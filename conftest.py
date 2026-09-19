@@ -11,7 +11,7 @@ def playwright_page():
 
 @pytest.fixture
 def base_spider(playwright_page):
-    from primespiders.base import BaseSpider
+    from src.primespiders.base import BaseSpider
 
     class SimpleSpider(BaseSpider):
         async def run(self):

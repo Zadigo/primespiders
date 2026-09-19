@@ -5,9 +5,8 @@ import os
 import pathlib
 from importlib import import_module
 
-from playwright.async_api import async_playwright
-
 from base import BaseSpider
+from playwright.async_api import async_playwright
 
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 

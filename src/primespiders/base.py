@@ -5,13 +5,17 @@ from collections.abc import AsyncGenerator, Callable, Sequence
 from uuid import uuid4
 
 from playwright.async_api import Page
-from primespiders.observer import HistoryObserver, PerformanceObserver, SignalsContainer
-from primespiders.utils import logger
-from primespiders.utils.clients import get_redis
-from primespiders.utils.urls import URL
+from utils import logger
+from utils.urls import URL
 
-from typings import EcommerceMixinProtocol, TypeUrls
-from utils.operators import BaseCondition
+from primespiders.observer import (
+    HistoryObserver,
+    PerformanceObserver,
+    SignalsContainer,
+)
+from primespiders.typings import EcommerceMixinProtocol, TypeUrls
+from primespiders.utils.clients import get_redis
+from primespiders.utils.operators import BaseCondition
 
 
 class EcommerceMixin[T= 'BaseSpider']:

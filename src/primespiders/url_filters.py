@@ -1,5 +1,5 @@
-from utils.operators import Q, Rules
-from utils.urls import URL
+from primespiders.utils.operators import Q, Rules
+from primespiders.utils.urls import URL
 
 
 def url_empty(value: URL):

@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, Mock, patch
 
-from primespiders.observer import HistoryObserver, PerformanceObserver, SignalsContainer
+from src.primespiders.observer import HistoryObserver, PerformanceObserver, SignalsContainer
 
 
 def test_signals_container_initialization():

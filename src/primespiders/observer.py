@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
 
-from typings import TypeBaseSpider, TypeURL
-from utils.clients import get_redis
+from primespiders.typings import TypeBaseSpider, TypeURL
+from primespiders.utils.clients import get_redis
 
 
 class BaseSignalsContainer(ABC):

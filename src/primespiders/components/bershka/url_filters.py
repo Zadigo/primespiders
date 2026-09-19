@@ -1,5 +1,6 @@
-from utils.operators import PartTest, Q, Rules
 from utils.urls import URL
+
+from primespiders.utils.operators import PartTest, Q, Rules
 
 
 def remove_static_page(url: URL):

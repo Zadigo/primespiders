@@ -1,6 +1,6 @@
 import pytest
-from primespiders.utils.operators import And, IfElse, Not, Or, Q, Rules
-from primespiders.utils.urls import URL
+from src.primespiders.utils.operators import And, IfElse, Not, Or, Q, Rules
+from src.primespiders.utils.urls import URL
 
 
 class TestQ:

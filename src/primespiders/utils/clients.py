@@ -2,6 +2,7 @@ import os
 
 import psycopg2
 import redis
+
 from primespiders.utils import logger
 
 

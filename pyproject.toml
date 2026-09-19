@@ -8,6 +8,7 @@ dependencies = [
     "httpx2>=2.13.0",
     "huey>=3.4.0",
     "pandas>=3.0.6",
+    "pillow>=12.3.0",
     "psycopg2-binary>=2.9.13",
     "pydantic>=2.13.5",
     "pytest-playwright>=0.9.0",
@@ -58,3 +59,4 @@ explicit = true
 [build-system]
 requires = ["uv_build>=0.9,<0.10"]
 build-backend = "uv_build"
+
