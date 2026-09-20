@@ -5,3 +5,4 @@ __pycache__/
 *.pyd
 reports/*
 .pytest_cache/
+*.log

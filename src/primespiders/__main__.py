@@ -45,8 +45,6 @@ async def main(app_name: str, with_id: str | None = None, headless: bool = False
                         ignore_queries=ignore_queries,
                         ignore_fragments=ignore_fragments,
                     )
-                except KeyboardInterrupt:
-                    logger.error("Spider execution interrupted by user.")
                 except Exception as e:
                     raise ExceptionGroup("Error running spider", [e])
                 await browser.close()
@@ -97,12 +95,15 @@ if __name__ == '__main__':
     if args.debug:
         os.environ.setdefault("DEBUG", "True")
 
-    asyncio.run(
-        main(
-            args.spider,
-            with_id=args.with_id,
-            headless=args.headless, 
-            ignore_queries=args.ignore_queries,
-            ignore_fragments=args.ignore_fragments
+    try:
+        asyncio.run(
+            main(
+                args.spider,
+                with_id=args.with_id,
+                headless=args.headless, 
+                ignore_queries=args.ignore_queries,
+                ignore_fragments=args.ignore_fragments
+            )
         )
-    )
+    except KeyboardInterrupt:
+        logger.error("Spider execution interrupted by user.")

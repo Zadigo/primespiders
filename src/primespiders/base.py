@@ -77,6 +77,7 @@ class BaseSpider(ABC):
         self.redis_client = get_redis()
         self.job_uuid = with_id or uuid4()
 
+        # Storage keys for Redis
         self.urls_to_visit_key = self.storage_key_template.format(
             job_uuid=self.job_uuid,
             suffix=":urls_to_visit"
@@ -180,14 +181,17 @@ class BaseSpider(ABC):
                     root_domain=self._accepted_domain
                 )
                 if not next_url.is_valid:
+                    logger.warning(f"Invalid URL encountered: {next_url}")
                     continue
 
+                logger.info(f"Navigating to next URL: {next_url}")
                 await self.page.goto(
                     str(next_url),
                     timeout=self.default_timeout,
                     wait_until='domcontentloaded'
                 )
 
+                self.redis_client.sadd(self.visited_urls_key, str(next_url))
                 urls = await self.get_page_links()
 
                 async with asyncio.TaskGroup() as tg:
