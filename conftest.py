@@ -14,6 +14,10 @@ def base_spider(playwright_page):
     from src.primespiders.base import BaseSpider
 
     class SimpleSpider(BaseSpider):
+        def __init__(self, page: Page):
+            super().__init__(page)
+            self.job_uuid = 'test_uuid'
+            
         async def run(self):
             await super().run()
 

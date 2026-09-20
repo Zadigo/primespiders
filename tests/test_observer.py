@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+
 from src.primespiders.observer import (
     HistoryObserver,
     PerformanceObserver,
@@ -50,7 +52,7 @@ async def test_signals_container_notification():
 
 class TestPerformanceObserver:
     async def test_initialization(self):
-        with patch('primespiders.observer.get_redis') as mget_redis:
+        with patch('src.primespiders.observer.get_redis') as mget_redis:
             mget_redis.return_value.scard = Mock(return_value=0)
             mget_redis.return_value.hget = Mock(return_value=None)
             mget_redis.return_value.hset = Mock()
@@ -66,3 +68,9 @@ class TestPerformanceObserver:
                 seen_urls_key="yet_another_value",
             )
             await observer.update(current_url="http://example.com")
+
+    @pytest.mark.e2e
+    async def test_save_data(self, base_spider):
+        observer = PerformanceObserver()
+        observer.spider = base_spider
+        await observer.update()

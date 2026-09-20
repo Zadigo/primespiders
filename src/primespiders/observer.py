@@ -1,4 +1,6 @@
+import asyncio
 import datetime
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
@@ -6,7 +8,7 @@ from typing import Any
 import pydantic
 
 from src.primespiders.typings import TypeBaseSpider, TypeURL
-from src.primespiders.utils.clients import get_redis
+from src.primespiders.utils.clients import get_postgres, get_redis
 
 
 class BaseSignalsContainer(ABC):
@@ -47,9 +49,11 @@ class SignalsContainer(BaseSignalsContainer):
         self._observers = [obs for obs in self._observers if obs != observer]
 
     async def notify(self, *, current_url: TypeURL, **kwargs: Any) -> None:
+        tasks: list[asyncio.Task] = []
         for observer in self._observers:
-            await observer.update(current_url=current_url, **kwargs)
-
+            tasks.append(asyncio.create_task(observer.update(current_url=current_url, **kwargs)))
+        await asyncio.gather(*tasks)
+                
     async def save_item(self, model: pydantic.BaseModel) -> str | None:
         """A simple implementation to save scrapped items to Redis 
         and notify observers about the saved item.
@@ -107,12 +111,7 @@ class PerformanceObserver(Observer):
             # Check the started on timestamp and update if necessary
             started_on = redis_db.hget(storage_key, 'started_on')
             if started_on is None:
-                str_date = str(current_date)
-                redis_db.hset(
-                    storage_key,
-                    'performance',
-                    mapping={'started_on': str_date}
-                )
+                redis_db.hset(storage_key, mapping={'started_on': str(current_date)})
 
             template = {
                 'urls_to_visit_count': urls_to_visit_count,
@@ -124,15 +123,85 @@ class PerformanceObserver(Observer):
                 'last_updated': str(current_date)
             }
 
-            redis_db.hset(storage_key, 'performance', mapping=template)
+            redis_db.hset(storage_key, mapping=template)
 
             # Send to Redis subscribers
             redis_db.publish(str(self.spider.job_uuid), str(template))
-            redis_db.publish(str(self.spider.job_uuid), {
-                'urls_to_visit': self.spider.url_to_str(self.spider.urls_to_visit)
+
+            other = json.dumps({
+                'urls_to_visit': await self.spider.url_to_str(self.spider.urls_to_visit)
             })
+            redis_db.publish(str(self.spider.job_uuid), other)
 
 
 class HistoryObserver(Observer):
+    """An observer that tracks the navigation history of the spider."""
     async def update(self, **kwargs: Any) -> None:
         pass
+
+
+class PostgresGlobalObserver(Observer):
+    """An observer that tracks the performance of the spider and 
+    stores it in a PostgreSQL database."""
+
+    CREATE_TABLE_SQL = "CREATE TABLE IF NOT EXISTS {name} ({columns})"
+
+    def __init__(self):
+        self.conn = get_postgres(dbname=self.database_name)
+        self.tables = [
+            {
+                'name': 'performance',
+                'columns': [
+                    'urls_to_visit_count INTEGER',
+                    'visited_urls_count INTEGER',
+                    'seen_urls_count INTEGER',
+                    'completion_pct FLOAT',
+                    'total_pct_urls_visited FLOAT',
+                    'last_seen_url TEXT',
+                    'last_updated TIMESTAMP'
+                ]
+            }
+        ]
+
+        for table in self.tables:
+            self.create_table(table)
+
+    def __del__(self):
+        if self.conn:
+            self.conn.close()
+
+    @staticmethod
+    def finalize_sql(sql: str):
+        return sql.strip().rstrip(';') + ';'
+
+    def run_cursor(self, sql: str):
+        with self.conn.cursor() as cursor:
+            cursor.execute(self.finalize_sql(sql))
+        self.conn.commit()
+
+    def create_table(self, table):
+        columns = ', '.join(table['columns'])
+        create_table_sql = self.CREATE_TABLE_SQL.format(
+            name=table['name'],
+            columns=columns
+        )
+
+        self.run_cursor(create_table_sql)
+
+    async def update(self, *, table: str | None = None, **kwargs: Any) -> None:
+        if table is None:
+            return
+        
+        columns = ', '.join([f"{col.split()[0]} = %s" for col in table['columns']])
+        values = [
+            kwargs.get('urls_to_visit_count', 0),
+            kwargs.get('visited_urls_count', 0),
+            kwargs.get('seen_urls_count', 0),
+            kwargs.get('completion_pct', 0.0),
+            kwargs.get('total_pct_urls_visited', 0.0),
+            str(kwargs.get('last_seen_url', '')),
+            str(kwargs.get('last_updated', ''))
+        ]
+
+        update_sql = self.finalize_sql(f"INSERT INTO {table['name']} SET {columns} VALUES ({', '.join(['%s'] * len(values))}")
+        self.run_cursor(update_sql)
