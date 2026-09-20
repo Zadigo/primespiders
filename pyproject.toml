@@ -13,13 +13,16 @@ dependencies = [
     "psycopg2-binary>=2.9.13",
     "pydantic>=2.13.5",
     "pytest-playwright>=0.9.0",
+    "python-crontab>=3.4.0",
     "redis>=8.1.0",
+    "schedule>=1.2.2",
 ]
 
 [dependency-groups]
 dev = [
     "pytest-aio>=2.1.7",
     "pytest-cov>=7.1.0",
+    "pytest-crayons>=0.0.9",
     "pytest-reportlog>=1.0.0",
     "pytest-timeout>=2.4.0",
     "ruff>=0.16.8",

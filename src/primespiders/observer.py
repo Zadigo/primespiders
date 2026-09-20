@@ -8,6 +8,7 @@ from typing import Any
 import pydantic
 
 from src.primespiders.typings import TypeBaseSpider, TypeURL
+from src.primespiders.utils import logger
 from src.primespiders.utils.clients import get_postgres, get_redis
 
 
@@ -124,6 +125,7 @@ class PerformanceObserver(Observer):
             }
 
             redis_db.hset(storage_key, mapping=template)
+            logger.info(f"Saved performance data: {template}")
 
             # Send to Redis subscribers
             redis_db.publish(str(self.spider.job_uuid), str(template))
@@ -132,6 +134,7 @@ class PerformanceObserver(Observer):
                 'urls_to_visit': await self.spider.url_to_str(self.spider.urls_to_visit)
             })
             redis_db.publish(str(self.spider.job_uuid), other)
+            logger.info(f"Published URLs to visit: {other}")
 
 
 class HistoryObserver(Observer):
