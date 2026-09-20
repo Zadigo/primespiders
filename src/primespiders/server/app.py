@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.primespiders.observer import PerformanceModel
 from src.primespiders.server.models import (
@@ -12,19 +13,37 @@ from src.primespiders.utils.clients import get_redis
 
 app = FastAPI()
 
-@app.websocket("/spider/{spider_id}")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.websocket("/ws/{spider_id}")
 async def get_spider(websocket: WebSocket, spider_id: str):
     """A websocket endpoint to get the status of a spider."""
     await websocket.accept()
+
     redisdb = get_redis()
+    if redisdb is None:
+        await websocket.close(code=1001, reason="Redis connection not available")
+        return
+    
     subscription = redisdb.pubsub()
     subscription.subscribe(f"{spider_id}")
 
     try:
         while True:
-            spider_message = subscription.listen()
             data = WsReceiveMessage(**await websocket.receive_json())
-            await websocket.send_json(spider_message)
+
+            spider_message = subscription.listen()
+            print(spider_message)
+            if spider_message is not None:
+                if spider_message['type'] == 'message':
+                    spider_message = spider_message['data'].decode()
+                await websocket.send_json(spider_message)
     except WebSocketDisconnect:
         await websocket.close()
     except WebSocketException:
