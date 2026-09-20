@@ -12,6 +12,16 @@ from src.primespiders.utils import logger
 from src.primespiders.utils.clients import get_postgres, get_redis
 
 
+class PerformanceModel(pydantic.BaseModel):
+    urls_to_visit_count: int = pydantic.Field(default=0)
+    visited_urls_count: int = pydantic.Field(default=0)
+    seen_urls_count: int = pydantic.Field(default=0)
+    completion_pct: float = pydantic.Field(default=0.0)
+    total_pct_urls_visited: float = pydantic.Field(default=0.0)
+    last_seen_url: str | None = pydantic.Field(default=None)
+    last_updated: str | None = pydantic.Field(default=None)
+
+
 class BaseSignalsContainer(ABC):
     @abstractmethod
     def attach(self, observer: Observer) -> None:
@@ -89,7 +99,7 @@ class PerformanceObserver(Observer):
 
         redis_db = get_redis()
         if redis_db is not None:
-            storage_key = f"primespiders:{self.spider.job_uuid}"
+            storage_key = f"primespiders:{self.spider.job_uuid}__performance"
 
             # Get the count of URLs to visit, visited URLs, and seen URLs
             urls_to_visit_count = redis_db.scard(self.spider.urls_to_visit_key)
@@ -114,27 +124,38 @@ class PerformanceObserver(Observer):
             if started_on is None:
                 redis_db.hset(storage_key, mapping={'started_on': str(current_date)})
 
-            template = {
-                'urls_to_visit_count': urls_to_visit_count,
-                'visited_urls_count': visited_urls_count,
-                'seen_urls_count': seen_urls_count,
-                'completion_pct': round(completion_pct, 2),
-                'total_pct_urls_visited': round(total_pct_urls_visited, 2),
-                'last_seen_url': str(kwargs.get('current_url', '')),
-                'last_updated': str(current_date)
-            }
+            # template = {
+            #     'urls_to_visit_count': urls_to_visit_count,
+            #     'visited_urls_count': visited_urls_count,
+            #     'seen_urls_count': seen_urls_count,
+            #     'completion_pct': round(completion_pct, 2),
+            #     'total_pct_urls_visited': round(total_pct_urls_visited, 2),
+            #     'last_seen_url': str(kwargs.get('current_url', '')),
+            #     'last_updated': str(current_date)
+            # }
+            
+            model = PerformanceModel(
+                urls_to_visit_count=urls_to_visit_count,
+                visited_urls_count=visited_urls_count,
+                seen_urls_count=seen_urls_count,
+                completion_pct=round(completion_pct, 2),
+                total_pct_urls_visited=round(total_pct_urls_visited, 2),
+                last_seen_url=str(kwargs.get('current_url', '')),
+                last_updated=str(current_date)
+            )
 
-            redis_db.hset(storage_key, mapping=template)
-            logger.info(f"Saved performance data. {template['completion_pct']}% complete")
+            redis_db.hset(storage_key, mapping=model.model_dump())
+            logger.info(f"Saved performance data. {model.completion_pct}% complete")
 
             # Send to Redis subscribers
-            redis_db.publish(str(self.spider.job_uuid), str(template))
+            redis_db.publish(str(self.spider.job_uuid), str(model.model_dump()))
 
             other = json.dumps({
                 'urls_to_visit': await self.spider.url_to_str(self.spider.urls_to_visit)
             })
             redis_db.publish(str(self.spider.job_uuid), other)
-            logger.info(f"Published URLs to visit: {other}")
+            logger.info(f"Published URLs to visit: {len(self.spider.urls_to_visit)} urls")
+
 
 
 class HistoryObserver(Observer):
