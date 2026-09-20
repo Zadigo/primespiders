@@ -1,0 +1,6 @@
+name: primespiders
+values:
+  - key: fastapi
+    value: ''
+  - key: spiderId
+    value: ''

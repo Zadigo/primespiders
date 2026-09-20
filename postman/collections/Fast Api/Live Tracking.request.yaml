@@ -1,0 +1,5 @@
+$kind: websocket-request
+description: ""
+url: ws://127.0.0.1:8000/ws/{{spiderId}}
+settings: {}
+order: 4410981089846916

@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{fastapi}}spider/{{spiderId}}/seen-urls"
+method: GET
+order: 2866559530781684
