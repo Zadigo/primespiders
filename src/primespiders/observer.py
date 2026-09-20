@@ -125,7 +125,7 @@ class PerformanceObserver(Observer):
             }
 
             redis_db.hset(storage_key, mapping=template)
-            logger.info(f"Saved performance data: {template}. {template['completion_pct']}% complete")
+            logger.info(f"Saved performance data. {template['completion_pct']}% complete")
 
             # Send to Redis subscribers
             redis_db.publish(str(self.spider.job_uuid), str(template))
