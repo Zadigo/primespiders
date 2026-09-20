@@ -1,0 +1,7 @@
+$kind: mcp-request
+transport: sse
+url: ""
+message: ""
+settings:
+  version: auto
+order: 1789933353132
