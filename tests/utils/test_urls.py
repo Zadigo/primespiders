@@ -61,19 +61,28 @@ async def test_validity(raw_url, expected_validity, rootdomain):
         assert url.root_domain == rootdomain
 
 
-@pytest.mark.parametrize(
-    "raw_url,expected_full_url",
-    [
-        ("https://example.com/path/to/resource", "https://example.com/path/to/resource"),
-        ("/path/to/resource", "https://example.com/path/to/resource"),
-    ]
-)
-def test_full_url(raw_url, expected_full_url):
-    if raw_url.startswith("/"):
-        url = URL(raw_url, root_domain="https://example.com")
-    else:
-        url = URL(raw_url)
+# @pytest.mark.parametrize(
+#     "raw_url,expected_full_url",
+#     [
+#         ("https://example.com/path/to/resource", "https://example.com/path/to/resource"),
+#         ("/path/to/resource", "https://example.com/path/to/resource"),
+#     ]
+# )
+# def test_full_url(raw_url, expected_full_url):
+#     if raw_url.startswith("/"):
+#         url = URL(raw_url, root_domain="https://example.com")
+#     else:
+#         url = URL(raw_url)
         
-    assert url.full_url is not None
-    assert isinstance(url.full_url, URL)
-    assert str(url.full_url) == expected_full_url
+#     assert url.full_url is not None
+#     assert isinstance(url.full_url, URL)
+#     assert str(url.full_url) == expected_full_url
+
+
+
+def test_path_resolution():
+    url = URL("/relative/path", root_domain="example.com")
+    assert url.raw_url is not None
+    assert url.raw_url == "https://example.com/relative/path"
+    print(url.parsed_url)
+    

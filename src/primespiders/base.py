@@ -222,7 +222,6 @@ class BaseSpider(ABC):
         current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
         if not current_url:
             logger.info("No more URLs to crawl.")
-            can_crawl = False
             self.can_crawl = False
             return
 

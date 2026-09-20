@@ -27,6 +27,17 @@ class URL:
             _root_domain = 'https://' + root_domain if not root_domain.startswith("http") else root_domain
             self.root_domain = urlparse(_root_domain or "").netloc
 
+        if self.raw_url.startswith("/") and self.root_domain is not None:
+            self.raw_url = urlunparse((
+                'https',  # scheme
+                self.root_domain,  # netloc
+                self.raw_url,  # path
+                '',  # params
+                '',  # query
+                ''   # fragment
+            ))
+            self.parsed_url = urlparse(self.raw_url)
+
     def __repr__(self):
         return f"URL(raw_url='{self.raw_url}', domain='{self.domain}')"
 
@@ -79,24 +90,24 @@ class URL:
         """Return the domain part of the URL as a URL object."""
         return self.parsed_url.netloc
 
-    @property
-    def full_url(self):
-        """Return the full URL, including the 
-        root domain if the URL is relative."""
-        if self.parsed_url.netloc != "" and self.parsed_url.path != "":
-            return URL(self.raw_url, root_domain=self.root_domain)
+    # @property
+    # def full_url(self):
+    #     """Return the full URL, including the 
+    #     root domain if the URL is relative."""
+    #     if self.parsed_url.netloc != "" and self.parsed_url.path != "":
+    #         return URL(self.raw_url, root_domain=self.root_domain)
 
-        if self.root_domain is not None:
-            result = urlunparse((
-                'https',  # scheme
-                self.root_domain,  # netloc
-                self.parsed_url.path,  # path
-                self.parsed_url.params,  # params
-                self.parsed_url.query,  # query
-                self.parsed_url.fragment  # fragment
-            ))
+    #     if self.root_domain is not None:
+    #         result = urlunparse((
+    #             'https',  # scheme
+    #             self.root_domain,  # netloc
+    #             self.parsed_url.path,  # path
+    #             self.parsed_url.params,  # params
+    #             self.parsed_url.query,  # query
+    #             self.parsed_url.fragment  # fragment
+    #         ))
 
-            return URL(result, root_domain=self.root_domain)
+    #         return URL(result, root_domain=self.root_domain)
 
     @property
     def parts(self):
