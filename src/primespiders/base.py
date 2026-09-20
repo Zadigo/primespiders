@@ -1,9 +1,14 @@
 import asyncio
+import io
 import os
+import pathlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Callable, Sequence
+from typing import Any
 from uuid import uuid4
 
+import aiofiles
+import pandas
 from playwright.async_api import Page
 
 from src.primespiders.observer import (
@@ -92,6 +97,107 @@ class BaseSpider(ABC):
                 str_urls.append(str(u))
         return str_urls
 
+    @abstractmethod
+    async def run(self):
+        """Run the crawling process starting from the start URL."""
+        if self.start_url is None:
+            raise ValueError("start_url must be defined")
+
+        self._accepted_domain = URL(self.start_url).domain
+
+        logger.info(f"Navigating to start URL: {self.start_url}")
+        await self.page.goto(
+            str(self.start_url),
+            timeout=self.default_timeout,
+            wait_until='domcontentloaded'
+        )
+
+        try:
+            await self.after_initial_navigation()
+        except Exception as e:
+            logger.error(f"Error during after_initial_navigation: {e}")
+        
+        urls = await self.get_page_links()
+        await self._add_urls_to_redis(urls)
+
+        # This is the section that
+        # handles crawling from page to page
+        if self.redis_client is not None:
+            can_crawl: bool = True
+            while can_crawl:
+                current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
+                if not current_url:
+                    logger.info("No more URLs to crawl.")
+                    can_crawl = False
+                    break
+
+                next_url = URL(
+                    current_url[0].decode('utf-8'), 
+                    domain=self._accepted_domain
+                )
+                if not next_url.is_valid:
+                    continue
+
+                await self.page.goto(
+                    str(next_url),
+                    timeout=self.default_timeout,
+                    wait_until='domcontentloaded'
+                )
+
+                urls = await self.get_page_links()
+
+                async with asyncio.TaskGroup() as tg:
+                    tg.create_task(self._add_urls_to_redis(urls))
+
+                    try:
+                        await tg.create_task(self.on_page_actions(current_url))
+                    except Exception as e:
+                        logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
+
+                    await tg.create_task(self.signals.notify(current_url=next_url))
+
+                    if os.environ.get('DEBUG') == 'True':
+                        can_crawl = False
+                        break
+
+                await asyncio.sleep(10)
+
+    async def automate(self, from_file: str):
+        fullpath = pathlib.Path(from_file)
+        if not fullpath.exists():
+            raise FileNotFoundError(f"The file {from_file} does not exist.")
+
+        if fullpath.is_dir():
+            raise IsADirectoryError(f"The path {from_file} is a directory, expected a file.")
+
+        # If the file exists and is not a directory, proceed with automation
+        async with aiofiles.open(fullpath, 'r') as f:
+            content = io.BytesIO(await f.read())
+            if fullpath.suffix == '.csv':
+                df = pandas.read_csv(content)
+            elif fullpath.suffix == '.json':
+                df = pandas.read_json(content)
+
+        if not 'urls' in df.columns:
+            raise ValueError(f"The file {from_file} must contain a 'urls' column.")
+        
+        url_instances: list[URL] = []
+        for url in df['urls']:
+            instance = URL(url)
+            url_instances.append(instance)
+
+        await self._add_urls_to_redis(url_instances)
+
+        can_crawl = True
+        while can_crawl:
+            next_url = await self.redis_client.spop(self.urls_to_visit_key)
+            if next_url is None:
+                break
+
+            await self.on_page_actions(next_url, df=df)
+            await self.signals.notify(current_url=next_url)
+            await asyncio.sleep(10)
+
     async def _add_urls_to_redis(self, urls: TypeUrls):
         """Add a sequence or generator of URLs to the Redis sets 
         for URLs to visit and seen links."""
@@ -120,6 +226,9 @@ class BaseSpider(ABC):
 
             if href_instance.is_valid:
                 hrefs.append(href_instance)
+
+
+        logger.info(f"Found {len(hrefs)} valid links on the page.")
         return hrefs
 
     async def get_page_images(self):
@@ -142,7 +251,6 @@ class BaseSpider(ABC):
         """
 
         def evaluate_func[T = Callable[[URL], bool] | BaseCondition](url: URL, value: T) -> bool:
-            logger.info(url)
             result: T = value(url)
 
             if not isinstance(result, (bool, BaseCondition)):
@@ -159,16 +267,17 @@ class BaseSpider(ABC):
         # If any of the filters return True,
         # the URL is excluded.
         accepted_urls: list[URL] = []
-        if isinstance(urls, AsyncGenerator):
-            async for url in urls:
-                if any(evaluate_func(url, func) for func in self.url_filters):
-                    continue
-                accepted_urls.append(url)
-        else:
-            for url in urls:
-                if any(evaluate_func(url, func) for func in self.url_filters):
-                    continue
-                accepted_urls.append(url)
+        for url in urls:
+            if not url.check_domain(self._accepted_domain):
+                continue
+
+            result = any(evaluate_func(url, func) for func in self.url_filters)
+            if result:
+                continue
+
+            accepted_urls.append(url)
+
+        logger.info(f"Accepted {len(accepted_urls)} URLs after filtering.")
         return accepted_urls
 
     async def after_initial_navigation(self):
@@ -179,58 +288,5 @@ class BaseSpider(ABC):
     async def before_page_actions(self):
         """Perform actions before interacting with the page."""
 
-    async def on_page_actions(self, current_url: URL):
+    async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any):
         pass
-
-    @abstractmethod
-    async def run(self):
-        """Run the crawling process starting from the start URL."""
-        if self.start_url is None:
-            raise ValueError("start_url must be defined")
-
-        self._accepted_domain = URL(self.start_url).domain
-
-        logger.info(f"Navigating to start URL: {self.start_url}")
-        await self.page.goto(
-            str(self.start_url),
-            timeout=self.default_timeout,
-            wait_until='domcontentloaded'
-        )
-
-        await self.after_initial_navigation()
-
-        urls = await self.get_page_links()
-        await self._add_urls_to_redis(urls)
-
-        # This is the section that
-        # handles crawling from page to page
-        if self.redis_client is not None:
-            can_crawl: bool = True
-            while can_crawl:
-                current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
-                if not current_url:
-                    can_crawl = False
-                    break
-
-                next_url = URL(current_url[0].decode(
-                    'utf-8'), domain=self._accepted_domain)
-                if not next_url.is_valid:
-                    continue
-
-                await self.page.goto(
-                    str(next_url),
-                    timeout=self.default_timeout,
-                    wait_until='domcontentloaded'
-                )
-
-                urls = await self.get_page_links()
-                await self._add_urls_to_redis(urls)
-
-                await self.on_page_actions(current_url)
-                await self.signals.notify(current_url=next_url)
-
-                if os.environ.get('DEBUG') == 'True':
-                    can_crawl = False
-                    break
-
-                await asyncio.sleep(10)

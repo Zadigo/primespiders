@@ -12,7 +12,7 @@ from src.primespiders.utils.operators import And, Q, Rules
 
 
 class Bershka(EcommerceMixin, BaseSpider):
-    start_url: str | None = "https://www.bershka.com/"
+    start_url: str | None = "https://www.bershka.com/fr/h-woman.html"
     url_filters = (
         remove_static_page,
         url_empty,

@@ -5,8 +5,9 @@ import os
 import pathlib
 from importlib import import_module
 
-from base import BaseSpider
 from playwright.async_api import async_playwright
+
+from src.primespiders.base import BaseSpider
 
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 
@@ -23,7 +24,7 @@ async def main(app_name: str, headless: bool):
         await page.wait_for_selector('body')
 
         try:
-            mod = import_module(f'primespiders.components.{app_name}.app')
+            mod = import_module(f'src.primespiders.components.{app_name}.app')
         except ModuleNotFoundError as e:
             print(f"Error importing module: {e}")
         else:
@@ -35,8 +36,7 @@ async def main(app_name: str, headless: bool):
             if candidate is not None:
                 instance = candidate(page)
                 await instance.run()
-
-        await browser.close()
+                await browser.close()
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 import pytest
 
-from src.primespiders.utils.operators import And, IfElse, Not, Or, Q, Rules
+from src.primespiders.utils.operators import And, IfElse, Or, Q, Rules
 from src.primespiders.utils.urls import URL
 
 
@@ -50,11 +50,3 @@ class TestAnd:
 
         assert and_condition.conditions == [condition1, condition2]
         assert and_condition.url == URL(None)
-
-
-class TestNot:
-    def test_not_initialization(self):
-        condition = Q(Rules.EQUALS, "value")
-        not_condition = Not(URL(None), condition)
-        assert not_condition.conditions == [condition]
-        assert not_condition.url == URL(None)

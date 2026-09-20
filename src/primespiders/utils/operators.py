@@ -92,8 +92,10 @@ class IfElse(BaseCondition):
     def resolve(self):
         instance = self.if_condition(self.url)
         result = instance.resolve()
+
         if result:
             return self.url
+        
         return self.else_condition(self.url).resolve()
 
 
@@ -102,31 +104,23 @@ class BaseLogicalOperator(BaseCondition):
         super().__init__(url)
         self.conditions = conditions
 
+    def get_truth_array(self) -> list[bool]:
+        results: list[bool] = []
+        for condition in self.conditions:
+            instance = condition(self.url)
+            result = instance.resolve()
+            results.append(result)
+        return results
+
 
 class Or(BaseLogicalOperator):
     def resolve(self) -> bool:
-        for condition in self.conditions:
-            instance = condition(self.url)
-            if instance.resolve():
-                return True
-        return False
+        return any(self.get_truth_array())
 
 
 class And(BaseLogicalOperator):
     def resolve(self) -> bool:
-        for condition in self.conditions:
-            instance = condition(self.url)
-            if not instance.resolve():
-                return False
-        return True
-
-
-class Not(BaseLogicalOperator):
-    def resolve(self) -> bool:
-        if not self.conditions:
-            raise ValueError("Not operator requires at least one condition.")
-        instance = self.conditions[0](self.url)
-        return not instance.resolve()
+        return all(self.get_truth_array())
 
 
 class PartTest:

@@ -55,3 +55,6 @@ class URL:
             return f"{self._domain}{self.raw_url}"
 
         return self.raw_url
+
+    def check_domain(self, url: URL) -> bool:
+        return self.domain == url.domain

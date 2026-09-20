@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Generator, Sequence
+from collections.abc import Generator, Sequence
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -12,6 +12,6 @@ class EcommerceMixinProtocol(Protocol):
 
 type TypeURL = URL
 
-type TypeUrls = Sequence[URL] | Generator[URL] | AsyncGenerator[URL]
+type TypeUrls = Sequence[URL] | Generator[URL]
 
 type TypeBaseSpider = BaseSpider

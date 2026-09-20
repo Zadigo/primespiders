@@ -90,14 +90,15 @@ class PerformanceObserver(Observer):
                     visited_urls_count / seen_urls_count
                 ) * 100
 
+            current_date = datetime.datetime.now(tz=datetime.UTC)
             # Check the started on timestamp and update if necessary
             started_on = redis_db.hget(storage_key, 'started_on')
             if started_on is None:
-                d = str(datetime.datetime.now(tz=datetime.UTC))
+                str_date = str(current_date)
                 redis_db.hset(
                     storage_key,
                     'performance',
-                    mapping={'started_on': d}
+                    mapping={'started_on': str_date}
                 )
 
             template = {
@@ -107,7 +108,7 @@ class PerformanceObserver(Observer):
                 'completion_pct': completion_pct,
                 'total_pct_urls_visited': total_pct_urls_visited,
                 'last_seen_url': str(kwargs.get('current_url', '')),
-                'last_updated': str(datetime.datetime.now(tz=datetime.UTC))
+                'last_updated': str(current_date)
             }
 
             redis_db.hset(storage_key, 'performance', mapping=template)
@@ -115,7 +116,7 @@ class PerformanceObserver(Observer):
             # Send to Redis subscribers
             redis_db.publish(str(self.spider.job_uuid), str(template))
             redis_db.publish(str(self.spider.job_uuid), {
-                'utls_to_vists': self.spider.urls_to_visit
+                'urls_to_visit': self.spider.url_to_str(self.spider.urls_to_visit)
             })
 
 
