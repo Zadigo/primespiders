@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
 
+import pydantic
+
 from src.primespiders.typings import TypeBaseSpider, TypeURL
 from src.primespiders.utils.clients import get_redis
 
@@ -48,8 +50,19 @@ class SignalsContainer(BaseSignalsContainer):
         for observer in self._observers:
             await observer.update(current_url=current_url, **kwargs)
 
-    # async def some_business_logic(self) -> None:
-    #     await self.notify(current_url=self._spider.start_url)
+    async def save_item(self, model: pydantic.BaseModel) -> str | None:
+        """A simple implementation to save scrapped items to Redis 
+        and notify observers about the saved item.
+        
+        Args:
+            model (pydantic.BaseModel): The item model to be saved and notified about.
+        """
+        instance = get_redis()
+        if instance is not None:
+            storage_key = f"primespiders:{self._spider.job_uuid}:items"
+            await instance.rpush(storage_key, model.model_dump())
+            await self.notify(current_url=self._spider.start_url, item=model.model_dump())
+            return storage_key
 
 
 class Observer(ABC):

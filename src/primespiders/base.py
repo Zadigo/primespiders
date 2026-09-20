@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import aiofiles
 import pandas
+import pydantic
 from playwright.async_api import Page
 
 from src.primespiders.observer import (
@@ -23,7 +24,20 @@ from src.primespiders.utils.operators import BaseCondition
 from src.primespiders.utils.urls import URL
 
 
-class EcommerceMixin[T= 'BaseSpider']:
+class EcommerceMixin:
+    items_storage_key: str | None = None
+
+    async def get_products[T = pydantic.BaseModel](self: EcommerceMixinProtocol, model: T) -> Sequence[T]:
+        if self.redis_client is None or self.items_storage_key is None:
+            return []
+
+        values = self.redis_client.lrange(self.items_storage_key, 0, -1)
+        return [model.model_validate_json(v) for v in values]
+
+    async def save_product[T = pydantic.BaseModel](self: EcommerceMixinProtocol, model: T) -> None:
+        if self.signals is not None:
+            self.items_storage_key = await self.signals.save_item(model)
+
     def check_is_product_page(self: EcommerceMixinProtocol, url: URL) -> bool:
         """Implement this method to check if the given URL corresponds to a product page."""
         return False
@@ -150,7 +164,7 @@ class BaseSpider(ABC):
                     tg.create_task(self._add_urls_to_redis(urls))
 
                     try:
-                        await tg.create_task(self.on_page_actions(current_url))
+                        await tg.create_task(self.on_page_actions(current_url, tg=tg))
                     except Exception as e:
                         logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
 
