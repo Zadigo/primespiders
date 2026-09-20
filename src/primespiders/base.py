@@ -48,6 +48,18 @@ class EcommerceMixin:
 
 
 class BaseSpider(ABC):
+    """Base class for all spiders.
+
+    Args:
+        page (Page): The Playwright page instance for the spider.
+
+    Attributes:
+        start_url (URL | None): The starting URL for the spider.
+        storage_key_template (str): Template for Redis storage keys.
+        default_timeout (int): Default timeout for requests.
+        url_filters (Sequence[Callable[[URL], bool]]): Filters to apply to URLs.
+    """
+
     start_url: URL | None = None
     storage_key_template: str = "primespiders:{job_uuid}{suffix}"
     default_timeout: int = 30000
@@ -111,13 +123,27 @@ class BaseSpider(ABC):
                 str_urls.append(str(u))
         return str_urls
 
+    @staticmethod
+    async def str_to_url(str_urls: Sequence[str], root_domain: str | None = None) -> Sequence[URL]:
+        """Convert a sequence of string URLs to a sequence of valid URL objects.
+        
+        Args:
+            str_urls (Sequence[str]): A sequence of string URLs to be converted.
+            root_domain (str | None): The root domain to be used for relative URLs.
+
+        Returns:
+            Sequence[URL]: A sequence of valid URL objects.
+        """
+        hrefs = [URL(u, root_domain=root_domain) for u in str_urls]
+        return list(filter(lambda u: u.is_not_none, hrefs))
+
     @abstractmethod
     async def run(self):
         """Run the crawling process starting from the start URL."""
         if self.start_url is None:
             raise ValueError("start_url must be defined")
 
-        self._accepted_domain = URL(self.start_url).domain
+        self._accepted_domain = URL(self.start_url, root_domain=self._accepted_domain.domain).domain
 
         logger.info(f"Navigating to start URL: {self.start_url}")
         await self.page.goto(
@@ -147,7 +173,7 @@ class BaseSpider(ABC):
 
                 next_url = URL(
                     current_url[0].decode('utf-8'), 
-                    domain=self._accepted_domain
+                    root_domain=self._accepted_domain
                 )
                 if not next_url.is_valid:
                     continue
@@ -175,6 +201,22 @@ class BaseSpider(ABC):
                         break
 
                 await asyncio.sleep(10)
+
+    async def _add_urls_to_redis(self, urls: TypeUrls):
+        """Add a sequence or generator of URLs to the Redis sets 
+        for URLs to visit and seen links."""
+
+        if self.redis_client is not None:
+            all_urls = await self.url_to_str(urls)
+
+            filtered_urls = await self.run_url_filters(urls)
+            filtered_str_urls = await self.url_to_str(filtered_urls)
+
+            if not all_urls or not filtered_str_urls:
+                return
+
+            self.redis_client.sadd(self.urls_to_visit_key, *filtered_str_urls)
+            self.redis_client.sadd(self.seen_urls_key, *all_urls)
 
     async def automate(self, from_file: str):
         fullpath = pathlib.Path(from_file)
@@ -212,35 +254,25 @@ class BaseSpider(ABC):
             await self.signals.notify(current_url=next_url)
             await asyncio.sleep(10)
 
-    async def _add_urls_to_redis(self, urls: TypeUrls):
-        """Add a sequence or generator of URLs to the Redis sets 
-        for URLs to visit and seen links."""
-
-        if self.redis_client is not None:
-            all_urls = await self.url_to_str(urls)
-
-            filtered_urls = await self.run_url_filters(urls)
-            filtered_str_urls = await self.url_to_str(filtered_urls)
-
-            if not all_urls or not filtered_str_urls:
-                return
-
-            self.redis_client.sadd(self.urls_to_visit_key, *filtered_str_urls)
-            self.redis_client.sadd(self.seen_urls_key, *all_urls)
-
     async def get_page_links(self) -> Sequence[URL]:
-        hrefs: list[URL] = []
+        await asyncio.sleep(3)
+
+        str_hrefs: list[str] = []
+
         links = await self.page.query_selector_all('a')
         for item in links:
             href = await item.get_attribute('href')
-            if href is None:
-                continue
+            str_hrefs.append(href)
 
-            href_instance = URL(href)
+        # Do an eval on the page because the "query_selector_all" 
+        # method might not capture dynamically generated links.
+        hrefs_from_js = await self.page.evaluate("""() => {
+            const anchors = Array.from(document.querySelectorAll('a'))
+            return anchors.map(anchor => anchor.href)
+        }""")
 
-            if href_instance.is_valid:
-                hrefs.append(href_instance)
-
+        str_hrefs.extend(hrefs_from_js)
+        hrefs = await self.str_to_url(str_hrefs)
 
         logger.info(f"Found {len(hrefs)} valid links on the page.")
         return hrefs
