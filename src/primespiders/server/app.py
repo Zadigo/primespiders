@@ -35,16 +35,16 @@ async def get_spider(websocket: WebSocket, spider_id: str):
 async def get_spider_urls_to_visit(spider_id: str) -> Sequence[UrlsToVisitModel]:
     """An endpoint to get the URLs that a spider needs to visit."""
     redisdb = get_redis()
-    urls = redisdb.lrange(f"primespiders:{spider_id}:urls_to_visit", 0, -1)
-    return [UrlsToVisitModel(url=url) for url in urls]
+    urls = redisdb.smembers(f"primespiders:{spider_id}:urls_to_visit")
+    return [UrlsToVisitModel(url=url.decode()) for url in urls]
 
 
 @app.get("/spider/{spider_id}/seen-urls")
 async def get_spider_seen_urls(spider_id: str) -> Sequence[UrlsToVisitModel]:
     """An endpoint to get the URLs that a spider has already seen."""
     redisdb = get_redis()
-    urls = redisdb.lrange(f"primespiders:{spider_id}:seen_urls", 0, -1)
-    return [UrlsToVisitModel(url=url) for url in urls]
+    urls = redisdb.smembers(f"primespiders:{spider_id}:seen_urls")
+    return [UrlsToVisitModel(url=url.decode()) for url in urls]
 
 
 @app.get("/spiders")
