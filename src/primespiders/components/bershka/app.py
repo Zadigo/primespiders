@@ -1,3 +1,5 @@
+import asyncio
+
 from src.primespiders.base import BaseSpider, EcommerceMixin
 from src.primespiders.components.bershka.models import ProductModel
 from src.primespiders.components.bershka.url_filters import remove_static_page
@@ -13,18 +15,21 @@ from src.primespiders.utils.operators import And, Q, Rules
 
 class Bershka(EcommerceMixin, BaseSpider):
     start_url: str | None = "https://www.bershka.com/fr/h-woman.html"
-    url_filters = (
-        remove_static_page,
-        url_empty,
-        has_fragment,
-        has_query,
-        ignore_social_media
-    )
 
-    async def run(self):
-        await super().run()
+    @property
+    def get_url_filters(self):
+        return list(self.base_url_filters) + [
+            remove_static_page,
+            url_empty,
+            has_fragment,
+            has_query,
+            ignore_social_media
+        ]
 
-    async def on_page_actions(self, current_url):
+    async def run(self, **kwargs):
+        await super().run(**kwargs)
+
+    async def on_page_actions(self, current_url, tg: asyncio.TaskGroup | None = None, **kwargs):
         if self.check_is_product_page(current_url):
             template = {
                 'title': None,

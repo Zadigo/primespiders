@@ -3,7 +3,7 @@ import io
 import os
 import pathlib
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 from uuid import uuid4
 
@@ -52,25 +52,30 @@ class BaseSpider(ABC):
 
     Args:
         page (Page): The Playwright page instance for the spider.
+        ignore_queries (bool): Whether to ignore URLs with query parameters when crawling.
 
     Attributes:
         start_url (URL | None): The starting URL for the spider.
         storage_key_template (str): Template for Redis storage keys.
         default_timeout (int): Default timeout for requests.
-        url_filters (Sequence[Callable[[URL], bool]]): Filters to apply to URLs.
+        base_url_filters (Sequence[Callable[[URL], bool]]): Filters to apply to URLs.
+        ignore_queries (bool): Whether to ignore URLs with query parameters when crawling.
+        ignore_fragments (bool): Whether to ignore URLs with URL fragments when crawling.
     """
 
     start_url: URL | None = None
     storage_key_template: str = "primespiders:{job_uuid}{suffix}"
     default_timeout: int = 30000
-    url_filters: Sequence[Callable[[URL], bool]] = ()
+    base_url_filters: Sequence[Callable[[URL], bool]] = ()
+    ignore_queries: bool = True
+    ignore_fragments: bool = True
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Page, with_id: str | None = None):
         self.page = page
 
-        self._accepted_domain: URL | None = None
+        self._accepted_domain: str | None = None
         self.redis_client = get_redis()
-        self.job_uuid = uuid4()
+        self.job_uuid = with_id or uuid4()
 
         self.urls_to_visit_key = self.storage_key_template.format(
             job_uuid=self.job_uuid,
@@ -99,7 +104,7 @@ class BaseSpider(ABC):
 
     @property
     def get_url_filters(self):
-        return self.url_filters
+        return self.base_url_filters
 
     @property
     def urls_to_visit(self) -> Sequence[URL]:
@@ -115,12 +120,8 @@ class BaseSpider(ABC):
     @staticmethod
     async def url_to_str(urls: TypeUrls) -> Sequence[str]:
         str_urls: list[str] = []
-        if isinstance(urls, AsyncGenerator):
-            async for u in urls:
-                str_urls.append(str(u))
-        else:
-            for u in urls:
-                str_urls.append(str(u))
+        for url in urls:
+            str_urls.append(str(url))
         return str_urls
 
     @staticmethod
@@ -138,12 +139,15 @@ class BaseSpider(ABC):
         return list(filter(lambda u: u.is_not_none, hrefs))
 
     @abstractmethod
-    async def run(self):
+    async def run(self, ignore_queries: bool = True, ignore_fragments: bool = True):
         """Run the crawling process starting from the start URL."""
+        self.ignore_queries = ignore_queries
+        self.ignore_fragments = ignore_fragments
+
         if self.start_url is None:
             raise ValueError("start_url must be defined")
 
-        self._accepted_domain = URL(self.start_url, root_domain=self._accepted_domain.domain).domain
+        self._accepted_domain = URL(self.start_url).domain
 
         logger.info(f"Navigating to start URL: {self.start_url}")
         await self.page.goto(
@@ -196,11 +200,11 @@ class BaseSpider(ABC):
 
                     await tg.create_task(self.signals.notify(current_url=next_url))
 
-                    if os.environ.get('DEBUG') == 'True':
-                        can_crawl = False
-                        break
-
                 await asyncio.sleep(10)
+
+                if os.environ.get('DEBUG') == 'True':
+                    can_crawl = False
+                    break
 
     async def _add_urls_to_redis(self, urls: TypeUrls):
         """Add a sequence or generator of URLs to the Redis sets 
@@ -272,7 +276,7 @@ class BaseSpider(ABC):
         }""")
 
         str_hrefs.extend(hrefs_from_js)
-        hrefs = await self.str_to_url(str_hrefs)
+        hrefs = await self.str_to_url(str_hrefs, root_domain=self._accepted_domain)
 
         logger.info(f"Found {len(hrefs)} valid links on the page.")
         return hrefs
@@ -310,14 +314,25 @@ class BaseSpider(ABC):
 
             return result
 
-        # If any of the filters return True,
-        # the URL is excluded.
+        # If any of the filters return True, the URL is excluded.
         accepted_urls: list[URL] = []
         for url in urls:
-            if not url.check_domain(self._accepted_domain):
+            if url.root_domain is None:
+                url.root_domain = self._accepted_domain
+
+            # These are basic URL filters that are applied: domain check, 
+            # fragments and queries
+            if not url.is_path and not url.check_domain(self._accepted_domain):
                 continue
 
-            result = any(evaluate_func(url, func) for func in self.url_filters)
+            if self.ignore_fragments and bool(url.parsed_url.fragment):
+                continue
+
+            if self.ignore_queries and bool(url.parsed_url.query):
+                continue
+                
+            # These are custom more complex URL filters
+            result = any(evaluate_func(url, func) for func in self.get_url_filters)
             if result:
                 continue
 

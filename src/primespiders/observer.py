@@ -117,8 +117,8 @@ class PerformanceObserver(Observer):
                 'urls_to_visit_count': urls_to_visit_count,
                 'visited_urls_count': visited_urls_count,
                 'seen_urls_count': seen_urls_count,
-                'completion_pct': completion_pct,
-                'total_pct_urls_visited': total_pct_urls_visited,
+                'completion_pct': round(completion_pct, 2),
+                'total_pct_urls_visited': round(total_pct_urls_visited, 2),
                 'last_seen_url': str(kwargs.get('current_url', '')),
                 'last_updated': str(current_date)
             }
