@@ -275,7 +275,10 @@ class BaseSpider(ABC):
             self.redis_client.sadd(self.urls_to_visit_key, *filtered_str_urls)
             self.redis_client.sadd(self.seen_urls_key, *all_urls)
 
-    async def automate(self, from_file: str):
+    async def automate(self, from_file: str | None = None):
+        if from_file is None:
+            raise ValueError("No file specified for automation.")
+
         fullpath = pathlib.Path(from_file)
         if not fullpath.exists():
             raise FileNotFoundError(f"The file {from_file} does not exist.")
@@ -303,11 +306,15 @@ class BaseSpider(ABC):
 
         can_crawl = True
         while can_crawl:
+            if self.redis_client is None:
+                logger.error("Redis client is not available.")
+                break
+
             next_url = await self.redis_client.spop(self.urls_to_visit_key)
             if next_url is None:
                 break
 
-            await self.on_page_actions(next_url, df=df)
+            await self.on_page_actions(next_url, df=df, fullpath=fullpath)
             await self.signals.notify(current_url=next_url)
             await asyncio.sleep(10)
 

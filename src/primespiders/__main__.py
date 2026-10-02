@@ -13,7 +13,16 @@ from src.primespiders.utils import logger
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 
 
-async def main(app_name: str, with_id: str | None = None, headless: bool = False, ignore_queries: bool = True, ignore_fragments: bool = True):
+async def main(
+    app_name: str, 
+    with_id: str | None = None, 
+    headless: bool = False, 
+    ignore_queries: bool = True, 
+    ignore_fragments: bool = True, 
+    automate: bool = False, 
+    file: str | None = None,
+    klass_name: str | None = None
+):
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=headless,
@@ -29,10 +38,26 @@ async def main(app_name: str, with_id: str | None = None, headless: bool = False
         except ModuleNotFoundError as e:
             logger.error(f"Error importing module: {e}")
         else:
+            count: int = 0
             candidate: type[BaseSpider] = None
-            for _, klass in inspect.getmembers(mod, inspect.isclass):
+            klasses = inspect.getmembers(mod, inspect.isclass)
+            for _, klass in klasses:
                 if issubclass(klass, BaseSpider):
                     candidate = klass
+                    count += 1
+
+            if count > 1 and klass_name is None:
+                logger.error(
+                    f"Multiple candidate classes found in module {mod.__name__}. "
+                    "Please provide the --klass-name argument to choose a specific spider to run."
+                )
+                return
+            else:
+                if klass_name is not None:
+                    for _, klass in klasses:
+                        if issubclass(klass, BaseSpider) and klass.__name__.casefold() == klass_name.casefold():
+                            candidate = klass
+                            break
 
             if candidate is not None:
                 instance = candidate(page, with_id=with_id)
@@ -41,10 +66,13 @@ async def main(app_name: str, with_id: str | None = None, headless: bool = False
                     instance.job_uuid = with_id
 
                 try:
-                    await instance.run(
-                        ignore_queries=ignore_queries,
-                        ignore_fragments=ignore_fragments,
-                    )
+                    if automate:
+                        await instance.automate(from_file=file)
+                    else:
+                        await instance.run(
+                            ignore_queries=ignore_queries,
+                            ignore_fragments=ignore_fragments,
+                        )
                 except Exception as e:
                     raise ExceptionGroup("Error running spider", [e])
                 await browser.close()
@@ -91,6 +119,27 @@ if __name__ == '__main__':
         help="Start a spider that was previously run with the specified ID"
     )
 
+    parser.add_argument(
+        "--automate",
+        action="store_true",
+        default=False,
+        help="Run automation on a page without crawling"
+    )
+
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=None,
+        help="Specify a file to use for automation"
+    )
+
+    parser.add_argument(
+        "--klass-name",
+        type=str,
+        default=None,
+        help="Specify a spider class to run when the app module contains multiple spider options"
+    )
+
     args = parser.parse_args()
     if args.debug:
         os.environ.setdefault("DEBUG", "True")
@@ -102,7 +151,10 @@ if __name__ == '__main__':
                 with_id=args.with_id,
                 headless=args.headless, 
                 ignore_queries=args.ignore_queries,
-                ignore_fragments=args.ignore_fragments
+                ignore_fragments=args.ignore_fragments,
+                automate=args.automate,
+                file=args.file,
+                klass_name=args.klass_name,
             )
         )
     except KeyboardInterrupt:

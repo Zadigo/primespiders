@@ -1,4 +1,30 @@
 {
     "version": "0.2.0",
-    "configurations": []
+    "configurations": [
+        {
+            "name": "Google Place",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/playground/google_place.py",
+            "console": "integratedTerminal",
+            "presentation": {
+                "hidden": false,
+                "group": "Playground",
+                "order": 1
+            }
+        },
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/primespiders/__main__.py",
+            "args": [
+                "--klass-name",
+                "googleplaces",
+                "--automate",
+                "--debug"
+            ],
+            "console": "integratedTerminal"
+        },
+    ]
 }
