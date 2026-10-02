@@ -304,8 +304,8 @@ class BaseSpider(ABC):
 
         await self._add_urls_to_redis(url_instances)
 
-        can_crawl = True
-        while can_crawl:
+        can_automate = True
+        while can_automate:
             if self.redis_client is None:
                 logger.error("Redis client is not available.")
                 break
