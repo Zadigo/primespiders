@@ -35,9 +35,6 @@ class BaseGoogleMaps(ABC):
     async def automate(self: BaseSpiderProtocol, **kwargs):
         # await self.page.wait_for_event('load')
 
-        event: asyncio.Event = asyncio.Event()
-        event.set()
-
         feed_class = 'div[role="feed"]'
         await self.page.wait_for_selector(feed_class, state='visible')
 
@@ -50,7 +47,7 @@ class BaseGoogleMaps(ABC):
         temp_storage_key: str = f'google_maps:{self.job_uuid}:temp'
 
         while must_load:
-            task = asyncio.create_task(self.on_page_actions(None, event=event))
+            task = asyncio.create_task(self.on_page_actions(None))
 
             articles = await self.page.query_selector_all('div[role="article"]')
             last_article = articles[len(articles) - 1]
@@ -97,7 +94,7 @@ class BaseGoogleMaps(ABC):
             if stop_count >= 3:
                 must_load = False
 
-            await asyncio.sleep(20)
+            await asyncio.sleep(10)
 
 
 

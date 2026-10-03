@@ -176,62 +176,63 @@ class BaseSpider(ABC):
         except (TypeError, ValueError) as e:
             logger.error(f"Error during after_initial_navigation: {e}")
         
-        urls = await self.get_page_links()
-        await self._add_urls_to_redis(urls)
-
         if self.automation:
+            logger.info("Starting automation...")
             # schedule.every(10).seconds.do(lambda: asyncio.create_task(self.automate()))
             await self.automate() 
         else:
+            urls = await self.get_page_links()
+            await self._add_urls_to_redis(urls)
+
             schedule.every(40).seconds.do(lambda: asyncio.create_task(self.crawl()))
 
-        # This is the section that
-        # handles crawling from page to page
-        if self.redis_client is not None:
-            self.can_crawl: bool = True
-            while self.can_crawl:
-                schedule.run_pending()
-                await asyncio.sleep(1)
+            # This is the section that
+            # handles crawling from page to page
+            if self.redis_client is not None:
+                self.can_crawl: bool = True
+                while self.can_crawl:
+                    schedule.run_pending()
+                    await asyncio.sleep(1)
 
-                # current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
-                # if not current_url:
-                #     logger.info("No more URLs to crawl.")
-                #     self.can_crawl = False
-                #     break
+                    # current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
+                    # if not current_url:
+                    #     logger.info("No more URLs to crawl.")
+                    #     self.can_crawl = False
+                    #     break
 
-                # next_url = URL(
-                #     current_url[0].decode('utf-8'), 
-                #     root_domain=self._accepted_domain
-                # )
-                # if not next_url.is_valid:
-                #     logger.warning(f"Invalid URL encountered: {next_url}")
-                #     continue
+                    # next_url = URL(
+                    #     current_url[0].decode('utf-8'), 
+                    #     root_domain=self._accepted_domain
+                    # )
+                    # if not next_url.is_valid:
+                    #     logger.warning(f"Invalid URL encountered: {next_url}")
+                    #     continue
 
-                # logger.info(f"Navigating to next URL: {next_url}")
-                # await self.page.goto(
-                #     str(next_url),
-                #     timeout=self.default_timeout,
-                #     wait_until='domcontentloaded'
-                # )
+                    # logger.info(f"Navigating to next URL: {next_url}")
+                    # await self.page.goto(
+                    #     str(next_url),
+                    #     timeout=self.default_timeout,
+                    #     wait_until='domcontentloaded'
+                    # )
 
-                # self.redis_client.sadd(self.visited_urls_key, str(next_url))
-                # urls = await self.get_page_links()
+                    # self.redis_client.sadd(self.visited_urls_key, str(next_url))
+                    # urls = await self.get_page_links()
 
-                # async with asyncio.TaskGroup() as tg:
-                #     tg.create_task(self._add_urls_to_redis(urls))
+                    # async with asyncio.TaskGroup() as tg:
+                    #     tg.create_task(self._add_urls_to_redis(urls))
 
-                #     try:
-                #         await tg.create_task(self.on_page_actions(current_url, tg=tg))
-                #     except Exception as e:
-                #         logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
+                    #     try:
+                    #         await tg.create_task(self.on_page_actions(current_url, tg=tg))
+                    #     except Exception as e:
+                    #         logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
 
-                #     await tg.create_task(self.signals.notify(current_url=next_url))
+                    #     await tg.create_task(self.signals.notify(current_url=next_url))
 
-                # await asyncio.sleep(10)
+                    # await asyncio.sleep(10)
 
-                # if os.environ.get('DEBUG') == 'True':
-                #     self.can_crawl = False
-                #     break
+                    # if os.environ.get('DEBUG') == 'True':
+                    #     self.can_crawl = False
+                    #     break
 
     async def crawl(self):
         current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
