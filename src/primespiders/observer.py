@@ -1,15 +1,19 @@
 import asyncio
 import datetime
+import io
 import json
+import mimetypes
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
 
+import boto3
 import pydantic
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from primespiders.typings import TypeBaseSpider, TypeURL
-from primespiders.utils import DB_NAME, logger
+from primespiders.utils import DB_NAME, ENV, logger
 from primespiders.utils.clients import get_postgres, get_redis
 
 
@@ -234,7 +238,6 @@ class PostgresCrawlObserver(PostgresMixin,Observer):
         self.run_cursor(update_sql)
 
 
-
 class RedisChannelObserver(Observer):
     """An observer that publishes updates to a Redis channel."""
 
@@ -261,3 +264,127 @@ class RedisChannelObserver(Observer):
                 f'primespiders__{self.spider.job_uuid}', 
                 json.dumps(clean_values)
             )
+
+
+class S3Observer(Observer):
+    """An observer that uploads updates to an S3 bucket."""
+
+    def __init__(self):
+        super().__init__()
+
+        self.AWS_S3_ACCESS_KEY_ID: str | None = ENV.string('AWS_S3_ACCESS_KEY_ID')
+        self.AWS_S3_SECRET_ACCESS_KEY: str | None = ENV.string('AWS_S3_SECRET_ACCESS_KEY')
+        self.AWS_STORAGE_BUCKET_NAME: str | None = ENV.string('AWS_STORAGE_BUCKET_NAME')
+        self.AWS_S3_REGION_NAME: str | None = ENV.string('AWS_S3_REGION_NAME')
+
+        session_config = {
+            'aws_access_key_id': self.AWS_S3_ACCESS_KEY_ID,
+            'aws_secret_access_key': self.AWS_S3_SECRET_ACCESS_KEY,
+        }
+
+        if self.AWS_S3_REGION_NAME:
+            session_config['region_name'] = self.AWS_S3_REGION_NAME
+
+        session = boto3.Session(**session_config)
+
+        client_config = {}
+        client = session.client('s3', **client_config)
+        resource = session.resource('s3', **client_config)
+
+        # This is a trap because if always returns an object
+        # even if the bucket does not exist. We need to explicitly
+        # test if the bucket exists by calling head_bucket -- see below
+        bucket = resource.Bucket(self.AWS_STORAGE_BUCKET_NAME)
+
+        try:
+                
+            client.head_bucket(Bucket=self.AWS_STORAGE_BUCKET_NAME)
+            logger.info(f"✓ Connected to existing bucket: {self.AWS_STORAGE_BUCKET_NAME}")
+        except ClientError as e:
+            # If the bucket does not exist we receive
+            # a 404 code and that will be the trigger
+            # that will be using to create a new bucket
+            error_code = e.response['Error']['Code']
+
+            if error_code == '404':
+                logger.info(
+                    f"Bucket {self.AWS_STORAGE_BUCKET_NAME} "
+                    "not found. Attempting to create..."
+                )
+
+                try:
+                    create_bucket_config = {}
+
+                    # For regions other than us-east-1, we need to specify LocationConstraint
+                    if self.AWS_S3_REGION_NAME and self.AWS_S3_REGION_NAME != 'us-east-1':
+                        create_bucket_config['CreateBucketConfiguration'] = {
+                            'LocationConstraint': self.AWS_S3_REGION_NAME
+                        }
+
+                    client.create_bucket(
+                        Bucket=self.AWS_STORAGE_BUCKET_NAME,
+                        **create_bucket_config
+                    )
+
+                    waiter = client.get_waiter('bucket_exists')
+                    waiter.wait(
+                        Bucket=self.AWS_STORAGE_BUCKET_NAME,
+                        WaiterConfig={'Delay': 2, 'MaxAttempts': 30}
+                    )
+
+                    logger.info(f"✓ Created bucket: {self.AWS_STORAGE_BUCKET_NAME}")
+                except ClientError as creation_error:
+                    raise TypeError(
+                        f"Failed to create bucket '{self.AWS_STORAGE_BUCKET_NAME}': "
+                        f"{creation_error.response['Error']['Message']}"
+                    )
+            elif error_code == '403':
+                raise TypeError(
+                    f"Access denied to bucket '{self.AWS_STORAGE_BUCKET_NAME}'. "
+                    f"Check your AWS credentials and bucket permissions."
+                )
+            else:
+                raise TypeError(
+                    f"Failed to access bucket '{self.AWS_STORAGE_BUCKET_NAME}': "
+                    f"{e.response['Error']['Message']}"
+                )
+
+        logger.info(f"Uploads will go to bucket: {bucket.name}")
+
+        self.client = client
+        self.bucket = bucket
+
+        self.upload_count = 0
+        self.uploaded_files: list[str] = []
+
+    async def update(self, **kwargs: Any) -> None:
+        file_content: bytes = kwargs.get('file_content')
+        if not isinstance(file_content, bytes):
+            logger.error("file_content must be of type bytes")
+            return
+
+        buffer = io.BytesIO(file_content)
+
+        filename: str = kwargs.get('filename')
+        content_type = mimetypes.guess_type(filename)[0]
+
+        file_key: str = kwargs.get('file_key')
+        extra_args = {'ContentType': content_type or 'application/octet-stream'}
+        extra_args.update(ACL='public-read')
+
+        try:
+            self.client.upload_fileobj(
+                Fileobj=buffer,
+                Bucket=self.AWS_STORAGE_BUCKET_NAME,
+                Key=file_key,
+                ExtraArgs=extra_args
+            )
+        except ClientError as e:
+            logger.error(f"Failed to upload file: {filename}. Error: {e!s}")
+        except (NoCredentialsError, BotoCoreError) as e:
+            logger.error(str(e))
+            raise
+        else:
+            self.upload_count += 1
+            self.uploaded_files.append(filename)
+            logger.info(f"    + OK Uploaded {filename} to {file_key}")

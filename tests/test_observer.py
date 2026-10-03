@@ -1,18 +1,20 @@
 from unittest.mock import AsyncMock, Mock, patch
 
+import aiofiles
 import pytest
 
-from src.primespiders.observer import (
-    HistoryObserver,
-    PerformanceObserver,
+from primespiders.observer import (
+    HistoryCrawlObserver,
+    PerformanceCrawlObserver,
+    S3Observer,
     SignalsContainer,
 )
 
 
 def test_signals_container_initialization():
     container = SignalsContainer(None)
-    performance_observer = PerformanceObserver()
-    history_observer = HistoryObserver()
+    performance_observer = PerformanceCrawlObserver()
+    history_observer = HistoryCrawlObserver()
 
     container.attach(performance_observer)
     container.attach(history_observer)
@@ -24,8 +26,8 @@ def test_signals_container_initialization():
 
 def test_signals_container_detachment():
     container = SignalsContainer(None)
-    performance_observer = PerformanceObserver()
-    history_observer = HistoryObserver()
+    performance_observer = PerformanceCrawlObserver()
+    history_observer = HistoryCrawlObserver()
 
     container.attach(performance_observer)
     container.attach(history_observer)
@@ -57,7 +59,7 @@ class TestPerformanceObserver:
             mget_redis.return_value.hget = Mock(return_value=None)
             mget_redis.return_value.hset = Mock()
 
-            observer = PerformanceObserver()
+            observer = PerformanceCrawlObserver()
             assert observer is not None
 
             observer.spider = Mock(
@@ -71,6 +73,34 @@ class TestPerformanceObserver:
 
     @pytest.mark.e2e
     async def test_save_data(self, base_spider):
-        observer = PerformanceObserver()
+        observer = PerformanceCrawlObserver()
         observer.spider = base_spider
         await observer.update()
+
+
+class TestS3Observer:
+    # async def test_initialization(self):
+    #     with patch('src.primespiders.observer.boto3.Session') as msession:
+    #         mclient = Mock()
+    #         mresource = Mock()
+    #         msession.return_value.client.return_value = mclient
+    #         msession.return_value.resource.return_value = mresource
+
+    #         from src.primespiders.observer import S3Observer
+    #         observer = S3Observer()
+    #         assert observer.client is mclient
+    #         assert observer.bucket is mresource.Bucket.return_value
+
+    @pytest.mark.e2e
+    async def test_upload(self, tmp_path):
+        test_file_path = tmp_path / 'test_file.txt'
+        async with aiofiles.open(test_file_path, 'w') as f:
+            await f.write('Test content')
+
+            instance = S3Observer()
+            await instance.update(
+                file_content=b'Test content', 
+                filename=test_file_path.name,
+                file_key='rapports-cours-compte/test_file.txt'
+            )
+

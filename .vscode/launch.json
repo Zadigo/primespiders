@@ -2,7 +2,19 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Google Place",
+            "name": "Google Places (playground)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/playground/google_places.py",
+            "console": "integratedTerminal",
+            "presentation": {
+                "hidden": false,
+                "group": "Playground",
+                "order": 1
+            }
+        },
+        {
+            "name": "Google Place (playground)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/playground/google_place.py",
