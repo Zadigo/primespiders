@@ -8,7 +8,7 @@ from typing import Any
 import pydantic
 
 from primespiders.typings import TypeBaseSpider, TypeURL
-from primespiders.utils import logger
+from primespiders.utils import DB_NAME, logger
 from primespiders.utils.clients import get_postgres, get_redis
 
 
@@ -36,7 +36,7 @@ class BaseSignalsContainer(ABC):
         """
 
     @abstractmethod
-    async def notify(self, *, current_url: TypeURL, **kwargs: Any) -> None:
+    async def notify(self, *, current_url: TypeURL | None = None, **kwargs: Any) -> None:
         """
         Notify all observers about an event.
         """
@@ -59,7 +59,7 @@ class SignalsContainer(BaseSignalsContainer):
     def detach(self, observer: Observer) -> None:
         self._observers = [obs for obs in self._observers if obs != observer]
 
-    async def notify(self, *, current_url: TypeURL, **kwargs: Any) -> None:
+    async def notify(self, *, current_url: TypeURL | None = None, **kwargs: Any) -> None:
         tasks: list[asyncio.Task] = []
         for observer in self._observers:
             tasks.append(asyncio.create_task(observer.update(current_url=current_url, **kwargs)))
@@ -91,7 +91,7 @@ class Observer(ABC):
             raise ValueError("Observer is not attached to any spider.")
 
 
-class PerformanceObserver(Observer):
+class PerformanceCrawlObserver(Observer):
     """An observer that tracks the performance of the spider."""
 
     async def update(self, **kwargs) -> None:
@@ -158,20 +158,17 @@ class PerformanceObserver(Observer):
 
 
 
-class HistoryObserver(Observer):
+class HistoryCrawlObserver(Observer):
     """An observer that tracks the navigation history of the spider."""
     async def update(self, **kwargs: Any) -> None:
         pass
 
 
-class PostgresGlobalObserver(Observer):
-    """An observer that tracks the performance of the spider and 
-    stores it in a PostgreSQL database."""
-
+class PostgresMixin:
     CREATE_TABLE_SQL = "CREATE TABLE IF NOT EXISTS {name} ({columns})"
 
     def __init__(self):
-        self.conn = get_postgres(dbname=self.database_name)
+        self.conn = get_postgres(dbname=DB_NAME)
         self.tables = [
             {
                 'name': 'performance',
@@ -212,6 +209,11 @@ class PostgresGlobalObserver(Observer):
 
         self.run_cursor(create_table_sql)
 
+
+class PostgresCrawlObserver(PostgresMixin,Observer):
+    """An observer that tracks the performance of the spider and 
+    stores it in a PostgreSQL database."""
+
     async def update(self, *, table: str | None = None, **kwargs: Any) -> None:
         if table is None:
             return
@@ -229,3 +231,12 @@ class PostgresGlobalObserver(Observer):
 
         update_sql = self.finalize_sql(f"INSERT INTO {table['name']} SET {columns} VALUES ({', '.join(['%s'] * len(values))}")
         self.run_cursor(update_sql)
+
+
+
+class RedisChannelObserver(Observer):
+    """An observer that publishes updates to a Redis channel."""
+
+    async def update(self, **kwargs: Any) -> None:
+        if self.spider.redis_client is not None:
+            self.spider.redis_client.publish(self.spider.job_uuid, json.dumps(kwargs))

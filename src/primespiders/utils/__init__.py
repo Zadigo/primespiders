@@ -1,11 +1,18 @@
 import logging
 import pathlib
 
-import dotenv
+import turboenv
+
+# import dotenv
 
 BASE_DIR = pathlib.Path(__file__).parent.parent.absolute()
 
-dotenv.load_dotenv(BASE_DIR / ".env")
+ENV = turboenv.TurboEnv()
+ENV.load_envs('.env')
+
+DB_NAME = ENV.string('DB_NAME', default='primespiders')
+
+# dotenv.load_dotenv(BASE_DIR / ".env")
 
 logging.basicConfig(
     level=logging.INFO,

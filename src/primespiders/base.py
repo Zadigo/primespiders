@@ -14,8 +14,9 @@ import schedule
 from playwright.async_api import Page
 
 from primespiders.observer import (
-    HistoryObserver,
-    PerformanceObserver,
+    HistoryCrawlObserver,
+    PerformanceCrawlObserver,
+    RedisChannelObserver,
     SignalsContainer,
 )
 from primespiders.typings import EcommerceMixinProtocol, TypeUrls
@@ -109,8 +110,11 @@ class BaseSpider(ABC):
         logger.info(f"Initializing spider with job UUID: {self.job_uuid}")
 
         self.signals = SignalsContainer(self)
-        self.signals.attach(PerformanceObserver())
-        self.signals.attach(HistoryObserver())
+        self.signals.attach(RedisChannelObserver())
+
+        if not automation:
+            self.signals.attach(PerformanceCrawlObserver())
+            self.signals.attach(HistoryCrawlObserver())
 
         self.can_crawl: bool = True
 
@@ -178,8 +182,9 @@ class BaseSpider(ABC):
         
         if self.automation:
             logger.info("Starting automation...")
+            await self.automate()
+            # TODO: Use CRON to run the automation
             # schedule.every(10).seconds.do(lambda: asyncio.create_task(self.automate()))
-            await self.automate() 
         else:
             urls = await self.get_page_links()
             await self._add_urls_to_redis(urls)

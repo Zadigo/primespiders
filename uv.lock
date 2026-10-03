@@ -1424,6 +1424,7 @@ dependencies = [
     { name = "python-crontab" },
     { name = "redis" },
     { name = "schedule" },
+    { name = "turboenv" },
 ]
 
 [package.dev-dependencies]
@@ -1454,6 +1455,7 @@ requires-dist = [
     { name = "python-crontab", specifier = ">=3.4.0" },
     { name = "redis", specifier = ">=8.1.0" },
     { name = "schedule", specifier = ">=1.2.2" },
+    { name = "turboenv", specifier = ">=0.2.0a3" },
 ]
 
 [package.metadata.requires-dev]
@@ -2201,6 +2203,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.73Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.46Z" },
+]
+
+[[package]]
+name = "turboenv"
+version = "0.2.0a3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f0/45/a1d0ae7b7076bbd9c91d74264ace463f45654e42a9b70d174faaacffdc05/turboenv-0.2.0a3.tar.gz", hash = "sha256:507fa62aadf17f8ffc9bab07de7687eea869e327d833413ecfec954683d27e22", size = 11577, upload-time = "2026-09-28T22:24:56.064Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/0e/7a4d3d0cf8d1f585999211aa6b19a0e84b93877b537902ba5adafdb4629c/turboenv-0.2.0a3-py3-none-any.whl", hash = "sha256:d4f09e3663cd9b75ccf785e13b6a1cceaf114003e745c34cc0b0e0b645b7198a", size = 13360, upload-time = "2026-09-28T22:24:54.98Z" },
 ]
 
 [[package]]

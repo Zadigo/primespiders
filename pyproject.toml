@@ -19,6 +19,7 @@ dependencies = [
     "python-crontab>=3.4.0",
     "redis>=8.1.0",
     "schedule>=1.2.2",
+    "turboenv>=0.2.0a3",
 ]
 
 [dependency-groups]

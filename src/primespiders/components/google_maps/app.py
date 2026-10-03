@@ -4,17 +4,18 @@ from abc import ABC, abstractmethod
 from base64 import urlsafe_b64encode
 
 import polars
-from playwright.async_api import ElementHandle, Error
+from playwright.async_api import Error
 
 from primespiders.base import BaseSpider
 from primespiders.components.google_maps.models import GooglePlaceModel
 from primespiders.typings import BaseSpiderProtocol
+from primespiders.utils import logger
 from primespiders.utils.urls import URL
 
 
 class BaseGoogleMaps(ABC):
     @abstractmethod
-    def create_dataframe(self: BaseSpiderProtocol):
+    def create_dataframe(self: BaseSpiderProtocol) -> polars.DataFrame:
         pass
 
     async def after_initial_navigation(self):
@@ -67,19 +68,22 @@ class BaseGoogleMaps(ABC):
                 model = GooglePlaceModel(**json_data)
                 places.add(model)
 
-                self.redis_client.sadd(
-                    temp_storage_key,
-                    model.reference
-                )
-
                 if self.redis_client.sismember(
                     temp_storage_key,
                     model.reference
                 ) == 0:
+                    logger.info(f"Creating {model.reference} was not in temp storage, adding to main storage.")
                     self.redis_client.sadd(
                         self.storage_key_template, 
                         json.dumps(model.model_dump())
                     )
+
+                    await self.signals.notify(place=model)
+
+                self.redis_client.sadd(
+                    temp_storage_key,
+                    model.reference
+                )
 
             await last_article.scroll_into_view_if_needed(timeout=2000)
             await asyncio.sleep(5)
@@ -92,6 +96,7 @@ class BaseGoogleMaps(ABC):
             last_reference = json_data.get('reference', '')
 
             if stop_count >= 3:
+                logger.info("Stop count reached threshold, stopping load.")
                 must_load = False
 
             await asyncio.sleep(10)
@@ -101,22 +106,21 @@ class BaseGoogleMaps(ABC):
 class GooglePlaces(BaseGoogleMaps, BaseSpider):
     """Google Places spider for scraping places from Google Maps."""
 
+    # def __init__(self, **kwargs: Any):
+    #     super().__init__(**kwargs)
+
+    #     try:
+    #         self.signals.attach(PostgresGooglePlaceObserver())
+    #     except (TypeError, ValueError) as e:
+    #         logger.error(f"Failed to attach PostgresGooglePlaceObserver: {e}")
+
     start_url: str = 'https://www.google.com/maps/search/pharmacie+lille/@50.608788,3.0357762,14z/data=!3m1!4b1?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
     storage_key_template = 'google_places:{job_uuid}{suffix}'
 
     async def create_dataframe(self):
-        polars.DataFrame()
-       
-    async def _parse_article(self, article: ElementHandle) -> GooglePlaceModel:
-        name = await article.query_selector('a')
-        if name is not None:
-            name = await name.inner_text()
-
-        url = await article.query_selector('a')
-        if url is not None:
-            url = await url.get_attribute('href')
-
-        return GooglePlaceModel(name=name, url=url)
+        saved_data = self.redis_client.smembers(self.storage_key_template)
+        records = [GooglePlaceModel(**json.loads(item)) for item in saved_data]
+        return polars.DataFrame(records, orient='col')
 
     async def on_page_actions(self, current_url, *, tg = None, **kwargs):
         pass
