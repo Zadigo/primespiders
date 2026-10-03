@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import json
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
@@ -237,6 +238,26 @@ class PostgresCrawlObserver(PostgresMixin,Observer):
 class RedisChannelObserver(Observer):
     """An observer that publishes updates to a Redis channel."""
 
+    def __init__(self):
+        super().__init__()
+
     async def update(self, **kwargs: Any) -> None:
         if self.spider.redis_client is not None:
-            self.spider.redis_client.publish(self.spider.job_uuid, json.dumps(kwargs))
+            clean_values: dict = {}
+            for key, value in kwargs.items():
+                if isinstance(value, (str, int, float, bool)):
+                    clean_values[key] = value
+                    continue
+
+                if isinstance(value, uuid.UUID):
+                    clean_values[key] = str(value)
+                    continue
+
+                if isinstance(value, pydantic.BaseModel):
+                    clean_values[key] = value.model_dump()
+                    continue
+
+            self.spider.redis_client.publish(
+                f'primespiders__{self.spider.job_uuid}', 
+                json.dumps(clean_values)
+            )

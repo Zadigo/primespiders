@@ -45,7 +45,7 @@ class BaseGoogleMaps(ABC):
         must_load = True
         places: set[GooglePlaceModel] = set()
 
-        temp_storage_key: str = f'google_maps:{self.job_uuid}:temp'
+        temp_storage_key: str = f'google_places:{self.job_uuid}:temp'
 
         while must_load:
             task = asyncio.create_task(self.on_page_actions(None))
@@ -72,7 +72,7 @@ class BaseGoogleMaps(ABC):
                     temp_storage_key,
                     model.reference
                 ) == 0:
-                    logger.info(f"Creating {model.reference} was not in temp storage, adding to main storage.")
+                    logger.info(f"Creating {model.reference[:20]}... was not in temp storage, adding to main storage.")
                     self.redis_client.sadd(
                         self.storage_key_template, 
                         json.dumps(model.model_dump())
