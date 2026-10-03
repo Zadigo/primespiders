@@ -3,7 +3,7 @@ import os
 import psycopg2
 import redis
 
-from src.primespiders.utils import logger
+from primespiders.utils import logger
 
 
 def get_redis():

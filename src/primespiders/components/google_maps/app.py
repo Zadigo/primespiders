@@ -15,12 +15,11 @@ class BaseGoogleMaps(ABC):
     def create_dataframe(self):
         pass
 
-    async def automate(self: BaseSpiderProtocol):
+    async def automate(self: BaseSpiderProtocol, **kwargs):
         await self.page.wait_for_event('load')
 
         feed_class = 'div[role="feed"]'
         await self.page.wait_for_selector(feed_class, state='visible')
-        # feed = await page.query_selector(feed_class)
 
         stop_count: int = 0
         last_reference: str = ""
@@ -44,7 +43,13 @@ class BaseGoogleMaps(ABC):
                     json_data['url'] = str(parsed_url)
                     json_data['name'] = await urlLocator.inner_text()
 
-                places.add(GooglePlaceModel(**json_data))
+                model = GooglePlaceModel(**json_data)
+                places.add(model)
+
+                self.redis_client.spush(
+                    self.storage_key_template, 
+                    model.model_dump()
+                )
 
             await last_article.scroll_into_view_if_needed(timeout=2000)
             await asyncio.sleep(5)

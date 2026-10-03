@@ -1,9 +1,14 @@
+import logging
 import os
+import pathlib
+from subprocess import call
 
 import pytest
 from playwright.async_api import async_playwright
 
 from src.primespiders.components.bershka.app import Bershka
+
+logger = logging.getLogger(__name__)
 
 os.environ.setdefault("DEBUG", "True")
 
@@ -20,3 +25,16 @@ async def test_bershka_spider():
 
         assert spider is not None
         await browser.close()
+
+
+
+@pytest.mark.e2e
+def test_google_places_spider():
+    call([
+        'python', 
+        '-m',
+        str(pathlib.Path(__file__).parent.parent.joinpath('src', 'primespiders', '__main__.py')),
+        'google_maps',
+        '--klass-name',
+        'googleplaces'
+    ])

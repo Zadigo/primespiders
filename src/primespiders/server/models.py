@@ -1,7 +1,7 @@
 import pydantic
 from pydantic import Field
 
-from src.primespiders.observer import PerformanceModel
+from primespiders.observer import PerformanceModel
 
 
 class WsReceiveMessage(pydantic.BaseModel):

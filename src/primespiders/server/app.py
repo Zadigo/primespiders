@@ -3,13 +3,13 @@ from collections.abc import Sequence
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.primespiders.observer import PerformanceModel
-from src.primespiders.server.models import (
+from primespiders.observer import PerformanceModel
+from primespiders.server.models import (
     ListSpidersModel,
     UrlsToVisitModel,
     WsReceiveMessage,
 )
-from src.primespiders.utils.clients import get_redis
+from primespiders.utils.clients import get_redis
 
 app = FastAPI()
 

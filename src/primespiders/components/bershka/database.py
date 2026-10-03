@@ -1,4 +1,4 @@
-from src.primespiders.backend.database import BaseDatabase
+from primespiders.backend.database import BaseDatabase
 
 
 class BershkaDatabase(BaseDatabase):

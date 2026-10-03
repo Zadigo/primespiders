@@ -7,9 +7,9 @@ from typing import Any
 
 import pydantic
 
-from src.primespiders.typings import TypeBaseSpider, TypeURL
-from src.primespiders.utils import logger
-from src.primespiders.utils.clients import get_postgres, get_redis
+from primespiders.typings import TypeBaseSpider, TypeURL
+from primespiders.utils import logger
+from primespiders.utils.clients import get_postgres, get_redis
 
 
 class PerformanceModel(pydantic.BaseModel):

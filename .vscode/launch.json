@@ -14,17 +14,23 @@
             }
         },
         {
-            "name": "Python Debugger: Current File",
+            "name": "Debug Main",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/primespiders/__main__.py",
             "args": [
+                "google_maps",
                 "--klass-name",
                 "googleplaces",
-                "--automate",
-                "--debug"
+                "--automate"
             ],
-            "console": "integratedTerminal"
+            "cwd": "${workspaceFolder}/src/primespiders",
+            "console": "integratedTerminal",
+            "presentation": {
+                "hidden": false,
+                "group": "Main",
+                "order": 1
+            }
         },
     ]
 }

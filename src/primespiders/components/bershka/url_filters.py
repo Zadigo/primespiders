@@ -1,5 +1,5 @@
-from src.primespiders.utils.operators import Or, Q, Rules
-from src.primespiders.utils.urls import URL
+from primespiders.utils.operators import Or, Q, Rules
+from primespiders.utils.urls import URL
 
 
 def remove_static_page(url: URL):

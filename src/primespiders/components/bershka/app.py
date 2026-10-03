@@ -1,16 +1,16 @@
 import asyncio
 
-from src.primespiders.base import BaseSpider, EcommerceMixin
-from src.primespiders.components.bershka.models import ProductModel
-from src.primespiders.components.bershka.url_filters import remove_static_page
-from src.primespiders.url_filters import (
+from primespiders.base import BaseSpider, EcommerceMixin
+from primespiders.components.bershka.models import ProductModel
+from primespiders.components.bershka.url_filters import remove_static_page
+from primespiders.url_filters import (
     has_fragment,
     has_query,
     ignore_social_media,
     url_empty,
 )
-from src.primespiders.utils import logger
-from src.primespiders.utils.operators import And, Q, Rules
+from primespiders.utils import logger
+from primespiders.utils.operators import And, Q, Rules
 
 
 class Bershka(EcommerceMixin, BaseSpider):

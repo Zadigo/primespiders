@@ -3,15 +3,18 @@ import asyncio
 import inspect
 import os
 import pathlib
+import pkgutil
 from importlib import import_module
 
 from playwright.async_api import async_playwright
 
-from src.primespiders.base import BaseSpider
-from src.primespiders.utils import logger
+from primespiders import components
+from primespiders.base import BaseSpider
+from primespiders.utils import logger
 
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 
+AVAILABLE = {m.name for m in pkgutil.iter_modules(components.__path__)}
 
 async def main(
     app_name: str, 
@@ -34,10 +37,14 @@ async def main(
         await page.wait_for_selector('body')
 
         try:
-            mod = import_module(f'src.primespiders.components.{app_name}.app')
+            mod = import_module(f'primespiders.components.{app_name}.app')
         except ModuleNotFoundError as e:
-            logger.error(f"Error importing module: {e}")
+            logger.error("Cannot import component %r", e)
+            raise
         else:
+            if app_name not in AVAILABLE:
+                raise SystemExit(f"Unknown component {app_name!r}. Available: {sorted(AVAILABLE)}")
+
             count: int = 0
             candidate: type[BaseSpider] = None
             klasses = inspect.getmembers(mod, inspect.isclass)

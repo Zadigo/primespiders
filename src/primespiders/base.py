@@ -13,16 +13,16 @@ import pydantic
 import schedule
 from playwright.async_api import Page
 
-from src.primespiders.observer import (
+from primespiders.observer import (
     HistoryObserver,
     PerformanceObserver,
     SignalsContainer,
 )
-from src.primespiders.typings import EcommerceMixinProtocol, TypeUrls
-from src.primespiders.utils import logger
-from src.primespiders.utils.clients import get_redis
-from src.primespiders.utils.operators import BaseCondition
-from src.primespiders.utils.urls import URL
+from primespiders.typings import EcommerceMixinProtocol, TypeUrls
+from primespiders.utils import logger
+from primespiders.utils.clients import get_redis
+from primespiders.utils.operators import BaseCondition
+from primespiders.utils.urls import URL
 
 
 class EcommerceMixin:

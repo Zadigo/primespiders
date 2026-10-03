@@ -67,3 +67,5 @@ explicit = true
 requires = ["uv_build>=0.9,<0.10"]
 build-backend = "uv_build"
 
+[tool.ruff]
+src = ["src"]
