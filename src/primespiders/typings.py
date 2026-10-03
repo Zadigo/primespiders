@@ -1,6 +1,7 @@
+import asyncio
 from abc import abstractmethod
 from collections.abc import Callable, Generator, Sequence
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import playwright
 import playwright.async_api
@@ -64,6 +65,12 @@ class BaseSpiderProtocol(Protocol):
 
     @abstractmethod
     async def run(self): ...
+
+    async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any): ...
+
+    async def after_initial_navigation(self): ...
+
+    async def before_page_actions(self): ...
 
 
 type TypeURL = URL

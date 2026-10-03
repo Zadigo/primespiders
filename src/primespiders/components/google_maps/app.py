@@ -1,4 +1,5 @@
 import asyncio
+import json
 from abc import ABC, abstractmethod
 from base64 import urlsafe_b64encode
 
@@ -16,11 +17,26 @@ class BaseGoogleMaps(ABC):
     def create_dataframe(self: BaseSpiderProtocol):
         pass
 
+    async def after_initial_navigation(self):
+        await self.page.wait_for_selector('body')
+        buttons = await self.page.query_selector_all('button')
+        for button in buttons:
+            text = await button.inner_text()
+            if text.strip().lower() == "tout accepter":
+                try:
+                    await button.click(button='left')
+                except Error as e:
+                    print(f"Error clicking 'Tout accepter' button: {e}")
+                break
+
     async def run(self: BaseSpiderProtocol, **kwargs):
         await super().run(**kwargs)
 
     async def automate(self: BaseSpiderProtocol, **kwargs):
-        await self.page.wait_for_event('load')
+        # await self.page.wait_for_event('load')
+
+        event: asyncio.Event = asyncio.Event()
+        event.set()
 
         feed_class = 'div[role="feed"]'
         await self.page.wait_for_selector(feed_class, state='visible')
@@ -31,7 +47,11 @@ class BaseGoogleMaps(ABC):
         must_load = True
         places: set[GooglePlaceModel] = set()
 
+        temp_storage_key: str = f'google_maps:{self.job_uuid}:temp'
+
         while must_load:
+            task = asyncio.create_task(self.on_page_actions(None, event=event))
+
             articles = await self.page.query_selector_all('div[role="article"]')
             last_article = articles[len(articles) - 1]
 
@@ -50,10 +70,19 @@ class BaseGoogleMaps(ABC):
                 model = GooglePlaceModel(**json_data)
                 places.add(model)
 
-                self.redis_client.spush(
-                    self.storage_key_template, 
-                    model.model_dump()
+                self.redis_client.sadd(
+                    temp_storage_key,
+                    model.reference
                 )
+
+                if self.redis_client.sismember(
+                    temp_storage_key,
+                    model.reference
+                ) == 0:
+                    self.redis_client.sadd(
+                        self.storage_key_template, 
+                        json.dumps(model.model_dump())
+                    )
 
             await last_article.scroll_into_view_if_needed(timeout=2000)
             await asyncio.sleep(5)
@@ -75,7 +104,7 @@ class BaseGoogleMaps(ABC):
 class GooglePlaces(BaseGoogleMaps, BaseSpider):
     """Google Places spider for scraping places from Google Maps."""
 
-    base_url: str = 'https://www.google.com/maps/search/pharmacie+lille/@50.608788,3.0357762,14z/data=!3m1!4b1?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
+    start_url: str = 'https://www.google.com/maps/search/pharmacie+lille/@50.608788,3.0357762,14z/data=!3m1!4b1?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
     storage_key_template = 'google_places:{job_uuid}{suffix}'
 
     async def create_dataframe(self):
@@ -92,18 +121,6 @@ class GooglePlaces(BaseGoogleMaps, BaseSpider):
 
         return GooglePlaceModel(name=name, url=url)
 
-    async def before_page_actions(self):
-        await self.page.wait_for_selector('body')
-        buttons = await self.page.query_selector_all('button')
-        for button in buttons:
-            text = await button.inner_text()
-            if text.strip().lower() == "tout accepter":
-                try:
-                    await button.click(button='left')
-                except Error as e:
-                    print(f"Error clicking 'Tout accepter' button: {e}")
-                break
-
     async def on_page_actions(self, current_url, *, tg = None, **kwargs):
         pass
             
@@ -111,7 +128,7 @@ class GooglePlaces(BaseGoogleMaps, BaseSpider):
 class GooglePlace(BaseGoogleMaps, BaseSpider):
     """Google Place spider for scraping a single place from Google Maps."""
 
-    base_url: str = 'https://www.google.com/maps/place/Grande+Pharmacie+de+Lille/@50.61921,3.0031802,14z/data=!4m10!1m2!2m1!1spharmacie+lille!3m6!1s0x47c2d573496fa237:0x2dd485f0ab4a9155!8m2!3d50.61921!4d3.041289!15sCg9waGFybWFjaWUgbGlsbGVaESIPcGhhcm1hY2llIGxpbGxlkgEIcGhhcm1hY3ngAQA!16s%2Fg%2F1v16pg3_?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
+    start_url: str = 'https://www.google.com/maps/place/Grande+Pharmacie+de+Lille/@50.61921,3.0031802,14z/data=!4m10!1m2!2m1!1spharmacie+lille!3m6!1s0x47c2d573496fa237:0x2dd485f0ab4a9155!8m2!3d50.61921!4d3.041289!15sCg9waGFybWFjaWUgbGlsbGVaESIPcGhhcm1hY2llIGxpbGxlkgEIcGhhcm1hY3ngAQA!16s%2Fg%2F1v16pg3_?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
 
     async def on_page_actions(self, current_url, *, tg = None, **kwargs):
         pass
