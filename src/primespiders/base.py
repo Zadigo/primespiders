@@ -71,29 +71,40 @@ class BaseSpider(ABC):
     ignore_queries: bool = True
     ignore_fragments: bool = True
 
-    def __init__(self, page: Page, with_id: str | None = None):
+    def __init__(self, page: Page, *, with_id: str | None = None, automation: bool = False):
         self.page = page
 
         self._accepted_domain: str | None = None
         self.redis_client = get_redis()
         self.job_uuid = with_id or uuid4()
 
-        # Storage keys for Redis
-        self.urls_to_visit_key = self.storage_key_template.format(
-            job_uuid=self.job_uuid,
-            suffix=":urls_to_visit"
-        )
-        self.visited_urls_key = self.storage_key_template.format(
-            job_uuid=self.job_uuid,
-            suffix=":visited_urls"
-        )
-        self.seen_urls_key = self.storage_key_template.format(
-            job_uuid=self.job_uuid,
-            suffix=":seen_urls"
-        )
+        self.urls_to_visit_key: str | None = None
+        self.visited_urls_key: str | None = None
+        self.seen_urls_key: str | None = None
 
-        if self.redis_client is not None:
-            self.redis_client.sadd(self.visited_urls_key, str(self.start_url))
+        self.automation = automation
+        # Storage keys for Redis
+        if not self.automation:
+            self.urls_to_visit_key = self.storage_key_template.format(
+                job_uuid=self.job_uuid,
+                suffix=":urls_to_visit"
+            )
+            self.visited_urls_key = self.storage_key_template.format(
+                job_uuid=self.job_uuid,
+                suffix=":visited_urls"
+            )
+            self.seen_urls_key = self.storage_key_template.format(
+                job_uuid=self.job_uuid,
+                suffix=":seen_urls"
+            )
+
+            if self.redis_client is not None:
+                self.redis_client.sadd(self.visited_urls_key, str(self.start_url))
+        else:
+            self.storage_key_template = self.storage_key_template.format(
+                job_uuid=self.job_uuid, 
+                suffix=":automation"
+            )
 
         logger.info(f"Initializing spider with job UUID: {self.job_uuid}")
 
@@ -162,13 +173,17 @@ class BaseSpider(ABC):
 
         try:
             await self.after_initial_navigation()
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             logger.error(f"Error during after_initial_navigation: {e}")
         
         urls = await self.get_page_links()
         await self._add_urls_to_redis(urls)
 
-        schedule.every(40).seconds.do(lambda: asyncio.create_task(self.crawl()))
+        if self.automation:
+            # schedule.every(10).seconds.do(lambda: asyncio.create_task(self.automate()))
+            await self.automate() 
+        else:
+            schedule.every(40).seconds.do(lambda: asyncio.create_task(self.crawl()))
 
         # This is the section that
         # handles crawling from page to page
@@ -248,7 +263,7 @@ class BaseSpider(ABC):
 
             try:
                 await tg.create_task(self.on_page_actions(current_url, tg=tg))
-            except Exception as e:
+            except (TypeError, ValueError) as e:
                 logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
 
             await tg.create_task(self.signals.notify(current_url=next_url))

@@ -39,6 +39,7 @@ async def main(
         try:
             mod = import_module(f'primespiders.components.{app_name}.app')
         except ModuleNotFoundError as e:
+            await browser.close()
             logger.error("Cannot import component %r", e)
             raise
         else:
@@ -67,21 +68,20 @@ async def main(
                             break
 
             if candidate is not None:
-                instance = candidate(page, with_id=with_id)
+                instance = candidate(page, with_id=with_id, automation=automate)
 
                 if with_id is not None:
                     instance.job_uuid = with_id
 
                 try:
-                    if automate:
-                        await instance.automate(from_file=file)
-                    else:
-                        await instance.run(
-                            ignore_queries=ignore_queries,
-                            ignore_fragments=ignore_fragments,
-                        )
-                except Exception as e:
+                    await instance.run(
+                        ignore_queries=ignore_queries,
+                        ignore_fragments=ignore_fragments,
+                    )
+                except (TypeError, ValueError) as e:
+                    await browser.close()
                     raise ExceptionGroup("Error running spider", [e])
+                
                 await browser.close()
 
 

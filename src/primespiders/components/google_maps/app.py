@@ -1,10 +1,11 @@
 import asyncio
-from abc import ABC
+from abc import ABC, abstractmethod
 from base64 import urlsafe_b64encode
 
-from playwright.async_api import ElementHandle
+import polars
+from playwright.async_api import ElementHandle, Error
 
-from primespiders.base import BaseSpider, Error, abstractmethod
+from primespiders.base import BaseSpider
 from primespiders.components.google_maps.models import GooglePlaceModel
 from primespiders.typings import BaseSpiderProtocol
 from primespiders.utils.urls import URL
@@ -12,8 +13,11 @@ from primespiders.utils.urls import URL
 
 class BaseGoogleMaps(ABC):
     @abstractmethod
-    def create_dataframe(self):
+    def create_dataframe(self: BaseSpiderProtocol):
         pass
+
+    async def run(self: BaseSpiderProtocol, **kwargs):
+        await super().run(**kwargs)
 
     async def automate(self: BaseSpiderProtocol, **kwargs):
         await self.page.wait_for_event('load')
@@ -72,8 +76,11 @@ class GooglePlaces(BaseGoogleMaps, BaseSpider):
     """Google Places spider for scraping places from Google Maps."""
 
     base_url: str = 'https://www.google.com/maps/search/pharmacie+lille/@50.608788,3.0357762,14z/data=!3m1!4b1?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
-    storage_key_template = 'google_places:{query}'
+    storage_key_template = 'google_places:{job_uuid}{suffix}'
 
+    async def create_dataframe(self):
+        polars.DataFrame()
+       
     async def _parse_article(self, article: ElementHandle) -> GooglePlaceModel:
         name = await article.query_selector('a')
         if name is not None:
