@@ -88,6 +88,8 @@ class SignalsContainer(BaseSignalsContainer):
 
 
 class Observer(ABC):
+    tag: str | None = None
+
     def __init__(self) -> None:
         self.spider: TypeBaseSpider | None = None
 
@@ -100,6 +102,8 @@ class Observer(ABC):
 
 class PerformanceCrawlObserver(Observer):
     """An observer that tracks the performance of the spider."""
+
+    tag = 'crawl'
 
     async def update(self, **kwargs) -> None:
         await super().update(**kwargs)
@@ -164,9 +168,11 @@ class PerformanceCrawlObserver(Observer):
             logger.info(f"Published URLs to visit: {len(self.spider.urls_to_visit)} urls")
 
 
-
 class HistoryCrawlObserver(Observer):
     """An observer that tracks the navigation history of the spider."""
+
+    tag = 'crawl'
+
     async def update(self, **kwargs: Any) -> None:
         pass
 
@@ -221,6 +227,8 @@ class PostgresCrawlObserver(PostgresMixin,Observer):
     """An observer that tracks the performance of the spider and 
     stores it in a PostgreSQL database."""
 
+    tag = 'crawl'
+
     async def update(self, *, table: str | None = None, **kwargs: Any) -> None:
         if table is None:
             return
@@ -242,6 +250,8 @@ class PostgresCrawlObserver(PostgresMixin,Observer):
 
 class RedisChannelObserver(Observer):
     """An observer that publishes updates to a Redis channel."""
+
+    tag = 'crawl'
 
     def __init__(self):
         super().__init__()
@@ -269,7 +279,9 @@ class RedisChannelObserver(Observer):
 
 
 class S3Observer(Observer):
-    """An observer that uploads/Òupdates to an S3 bucket."""
+    """An observer that uploads/updates to an S3 bucket."""
+
+    tag = 'crawl'
 
     def __init__(self):
         super().__init__()
@@ -396,6 +408,8 @@ class S3Observer(Observer):
 
 class JsonFileObserver(Observer):
     """A JSON file observer that writes data to a JSON file asynchronously."""
+
+    tag = 'crawl'
 
     def __init__(self, filename: str, base_path: pathlib.Path | None = None):
         super().__init__()
