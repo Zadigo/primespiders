@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -162,6 +163,18 @@ class BaseSpider(ABC):
         return self.base_url_filters
 
     @property
+    def urls_to_visit_storage_key(self):
+        return f"{self.__class__.__name__}:{self.job_uuid}:urls_to_visit"
+
+    @property
+    def visited_urls_storage_key(self):
+        return f"{self.__class__.__name__}:{self.job_uuid}:visited_urls"
+
+    @property
+    def seen_urls_storage_key(self):
+        return f"{self.__class__.__name__}:{self.job_uuid}:seen_urls"
+
+    @property
     def urls_to_visit(self) -> Sequence[URL]:
         """Return the list of URLs to visit from the Redis set."""
         urls: list[URL] = []
@@ -171,6 +184,16 @@ class BaseSpider(ABC):
             urls.append(URL(str_url))
 
         return urls if urls else []
+
+    @property
+    def pagination_storage_key(self):
+        """Redis storage key for pagination state."""
+        return f"{self.__class__.__name__}:{self.job_uuid}:pagination"
+
+    @property
+    def processed_storage_key(self):
+        """Redis storage key for processed files, urls..."""
+        return f"{self.__class__.__name__}:{self.job_uuid}:processed"
 
     @staticmethod
     async def url_to_str(urls: TypeUrls) -> Sequence[str]:
@@ -323,6 +346,7 @@ class BaseSpider(ABC):
     async def automate(self, *, event: asyncio.Event | None = None, from_file: str | None = None):
         """Run automation actions on every page starting from the start URL."""
         await self.on_page_actions(self.start_url, event=event)
+        await self.after_page_actions()
 
     async def get_page_links(self) -> Sequence[URL]:
         await asyncio.sleep(3)
@@ -411,3 +435,6 @@ class BaseSpider(ABC):
 
     async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any):
         """Perform actions on the page after it has been loaded."""
+
+    async def after_page_actions(self):
+        """Perform actions after interacting with the page."""
