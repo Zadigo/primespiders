@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.primespiders.utils.operators import Q, Rules
+from primespiders.utils.operators import Q, Rules
 
 os.environ.setdefault('PRIMESPIDERS_ENV', 'test')
 
