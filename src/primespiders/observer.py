@@ -416,27 +416,36 @@ class JsonFileObserver(Observer):
     def __init__(self, filename: str, base_path: pathlib.Path | None = None):
         super().__init__()
 
+        if not filename.endswith('.json'):
+            filename += '.json'
+
         fullpath = base_path or pathlib.Path(__file__).parent.absolute()
         self.filepath = fullpath / 'data' / filename
+
+        d = datetime.datetime.now(tz=datetime.UTC)
         
         self.template: dict[str, Any] = {
-            'created_at': datetime.utcnow().isoformat(),
-            'timestamp': datetime.utcnow().isoformat(),
+            'created_at': str(d),
+            'timestamp': str(d),
             'results': []
         }
 
-    async def update(self, **kwargs: Any) -> None:
+    async def update(self, data: dict[str, Any] | list[dict[str, Any]] | None = None, **kwargs: Any) -> None:
+        if data is None:
+            logger.warning("No data provided to update the JSON file.")
+            return
+        
         if not self.filepath.exists():
             self.filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        self.template['timestamp'] = datetime.utcnow().isoformat()
+        self.template['timestamp'] = str(datetime.datetime.now(tz=datetime.UTC))
 
         async with asyncio.Lock(), aiofiles.open(self.filepath, 'w+') as f:
             existing_data = await f.read()
             if existing_data:
                 self.template['results'] = json.loads(existing_data)
 
-            data: dict[str, Any] | list[dict[str, Any]] = kwargs.get('data')
+
             if isinstance(data, list):
                 self.template['results'].extend(data)
             else:

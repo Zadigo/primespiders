@@ -102,3 +102,12 @@ async def test_automation_spider_initialization(mock_automation_spider):
     assert mock_automation_spider.storage_key_template.endswith('automation')
 
 
+async def test_url_filters(mock_automation_spider):
+    urls = [
+        URL('http://example.com/1', root_domain='example.com'),
+        URL('http://example.com/2', root_domain='example.com'),
+        URL('http://other.com/1', root_domain='other.com')
+    ]
+    filtered_urls = await mock_automation_spider.run_url_filters(urls)
+    assert all(url.check_domain('example.com') for url in filtered_urls)
+    assert all(url.root_domain == 'example.com' for url in filtered_urls)

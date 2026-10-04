@@ -1,5 +1,4 @@
 import logging
-import os
 from unittest.mock import Mock
 
 import pytest
@@ -7,12 +6,13 @@ from playwright.async_api import async_playwright
 
 from primespiders.components.bershka.app import Bershka
 from primespiders.components.courtaudit.app import CourtAuditSpider, get_pdf_content
+
+# from primespiders.utils import ENV
 from primespiders.utils.urls import URL
 
 logger = logging.getLogger(__name__)
 
-os.environ.setdefault("DEBUG", "True")
-
+# ENV(DEBUG='true')
 
 @pytest.mark.e2e
 async def test_bershka_spider():
@@ -44,15 +44,3 @@ class TestCourtAuditSpider:
             spider = CourtAuditSpider(page)
             await spider.run()
             await browser.close()
-
-
-# @pytest.mark.e2e
-# def test_google_places_spider():
-#     call([
-#         'python', 
-#         '-m',
-#         str(pathlib.Path(__file__).parent.parent.joinpath('src', 'primespiders', '__main__.py')),
-#         'google_maps',
-#         '--klass-name',
-#         'googleplaces'
-#     ])

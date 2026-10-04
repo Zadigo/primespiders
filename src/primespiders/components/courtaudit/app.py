@@ -2,13 +2,13 @@ import asyncio
 import io
 
 import httpx2
-import unidecode
 from playwright.async_api import ElementHandle, Page
 
 from primespiders.base import BaseSpider
 from primespiders.components.courtaudit.models import PublicationModel
 from primespiders.observer import JsonFileObserver, S3Observer
 from primespiders.utils import logger
+from primespiders.utils.slug import create_slug
 from primespiders.utils.urls import URL
 
 
@@ -78,9 +78,7 @@ class CourtAuditSpider(BaseSpider):
             title_handle= await self.page.query_selector('h1')
             if title_handle is not None:
                 model.title = await title_handle.inner_text()
-
-                str_title = model.title.lower().replace("'", "-").replace(' ', '-')
-                model.slug = unidecode.unidecode(str_title)
+                model.slug = create_slug(model.title)
 
             theme_handle = await self.page.query_selector('span.text-thematic')
             if theme_handle is not None:

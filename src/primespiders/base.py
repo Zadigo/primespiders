@@ -1,5 +1,4 @@
 import asyncio
-import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -20,6 +19,10 @@ from primespiders.utils import ENV, logger
 from primespiders.utils.clients import get_redis
 from primespiders.utils.operators import BaseCondition
 from primespiders.utils.urls import URL
+
+IN_BETWEEN_PAGE_DELAY = ENV.integer('IN_BETWEEN_PAGE_DELAY', default=10)
+
+DEFAULT_TIMEOUT = ENV.integer('DEFAULT_TIMEOUT', default=10000)
 
 
 class EcommerceMixin:
@@ -98,7 +101,7 @@ class BaseSpider(ABC):
 
     start_url: URL | None = None
     storage_key_template: str = "primespiders:{job_uuid}{suffix}"
-    default_timeout: int = 30000
+    default_timeout: int = DEFAULT_TIMEOUT
     base_url_filters: Sequence[Callable[[URL], bool]] = ()
     ignore_queries: bool = True
     ignore_fragments: bool = True
@@ -295,7 +298,7 @@ class BaseSpider(ABC):
 
             await tg.create_task(self.signals.notify(current_url=next_url))
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(IN_BETWEEN_PAGE_DELAY)
 
         if ENV.boolean('DEBUG', default=False):
             self.can_crawl = False
@@ -343,12 +346,6 @@ class BaseSpider(ABC):
 
         logger.info(f"Found {len(hrefs)} valid links on the page.")
         return hrefs
-
-    async def get_page_images(self):
-        pass
-
-    async def scrap_page(self):
-        pass
 
     async def run_url_filters(self, urls: TypeUrls) -> Sequence[URL]:
         """Run the URL filters on the given sequence or generator of URLs. This
@@ -413,4 +410,4 @@ class BaseSpider(ABC):
         """Perform actions before interacting with the page."""
 
     async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any):
-        pass
+        """Perform actions on the page after it has been loaded."""

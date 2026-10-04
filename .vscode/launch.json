@@ -2,6 +2,18 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "presentation": {
+                "hidden": false,
+                "group": "File",
+                "order": 1
+            }
+        },
+        {
             "name": "Google Places (playground)",
             "type": "debugpy",
             "request": "launch",
