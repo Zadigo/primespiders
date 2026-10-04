@@ -18,9 +18,11 @@ dependencies = [
     "pydantic>=2.13.5",
     "pytest-playwright>=0.9.0",
     "python-crontab>=3.4.0",
+    "pytz>=2026.4",
     "redis>=8.1.0",
     "schedule>=1.2.2",
     "turboenv>=0.2.0a3",
+    "unidecode>=1.4.0",
 ]
 
 [dependency-groups]

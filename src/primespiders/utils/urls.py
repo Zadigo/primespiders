@@ -1,5 +1,5 @@
 from functools import cached_property
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from PIL import Image
 
@@ -18,7 +18,15 @@ class URL:
     
     """
     def __init__(self, url: str | bytes | None, root_domain: str | None = None):
-        self.raw_url = url.decode() if isinstance(url, bytes) else (url or "")
+        self.raw_url: str = ''
+
+        if isinstance(url, bytes):
+            self.raw_url = url.decode()
+        elif isinstance(url, URL):
+            self.raw_url = str(url)
+        else:
+            self.raw_url = url or ""
+         
         self.parsed_url = urlparse(self.raw_url)
 
         self.root_domain: str | None = None
@@ -116,3 +124,28 @@ class URL:
 
     def check_domain(self, url: str) -> bool:
         return self.domain == url
+
+    def increment(self, query_param: str = "page") -> URL:
+        """Increment the specified query parameter in the URL and return a new URL object.
+
+        Args:
+            query_param (str): The query parameter to increment. Defaults to "page".
+
+        Returns:
+            URL: A new URL object with the incremented query parameter.
+        """
+        query_params = parse_qs(self.parsed_url.query)
+        current_value = int(query_params.get(query_param, ["0"])[0])
+        query_params[query_param] = [str(current_value + 1)]
+
+        new_query = urlencode(query_params, doseq=True)
+        new_url = urlunparse((
+            self.parsed_url.scheme,
+            self.parsed_url.netloc,
+            self.parsed_url.path,
+            self.parsed_url.params,
+            new_query,
+            self.parsed_url.fragment
+        ))
+
+        return URL(new_url, root_domain=self.root_domain)

@@ -267,7 +267,7 @@ class RedisChannelObserver(Observer):
 
 
 class S3Observer(Observer):
-    """An observer that uploads updates to an S3 bucket."""
+    """An observer that uploads/Òupdates to an S3 bucket."""
 
     def __init__(self):
         super().__init__()
@@ -359,11 +359,14 @@ class S3Observer(Observer):
 
     async def update(self, **kwargs: Any) -> None:
         file_content: bytes = kwargs.get('file_content')
-        if not isinstance(file_content, bytes):
+        if not isinstance(file_content, (bytes, bytearray, io.BytesIO)):
             logger.error("file_content must be of type bytes")
             return
 
-        buffer = io.BytesIO(file_content)
+        if isinstance(file_content, io.BytesIO):
+            buffer = file_content
+        else:
+            buffer = io.BytesIO(file_content)
 
         filename: str = kwargs.get('filename')
         content_type = mimetypes.guess_type(filename)[0]

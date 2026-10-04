@@ -183,8 +183,16 @@ class BaseSpider(ABC):
         if self.automation:
             logger.info("Starting automation...")
             await self.automate()
+
             # TODO: Use CRON to run the automation
-            # schedule.every(10).seconds.do(lambda: asyncio.create_task(self.automate()))
+            event: asyncio.Event = asyncio.Event()
+            event.set()
+
+            schedule.every(10).seconds.do(lambda: asyncio.create_task(self.automate()))
+            
+            while event.is_set():
+                schedule.run_pending()
+                await asyncio.sleep(1)
         else:
             urls = await self.get_page_links()
             await self._add_urls_to_redis(urls)
@@ -296,48 +304,49 @@ class BaseSpider(ABC):
             self.redis_client.sadd(self.urls_to_visit_key, *filtered_str_urls)
             self.redis_client.sadd(self.seen_urls_key, *all_urls)
 
-    async def automate(self, from_file: str | None = None):
-        if from_file is None:
-            raise ValueError("No file specified for automation.")
+    async def automate(self, *, event: asyncio.Event | None = None, from_file: str | None = None):
+        # if from_file is None:
+        #     raise ValueError("No file specified for automation.")
 
-        fullpath = pathlib.Path(from_file)
-        if not fullpath.exists():
-            raise FileNotFoundError(f"The file {from_file} does not exist.")
+        # fullpath = pathlib.Path(from_file)
+        # if not fullpath.exists():
+        #     raise FileNotFoundError(f"The file {from_file} does not exist.")
 
-        if fullpath.is_dir():
-            raise IsADirectoryError(f"The path {from_file} is a directory, expected a file.")
+        # if fullpath.is_dir():
+        #     raise IsADirectoryError(f"The path {from_file} is a directory, expected a file.")
 
-        # If the file exists and is not a directory, proceed with automation
-        async with aiofiles.open(fullpath, 'r') as f:
-            content = io.BytesIO(await f.read())
-            if fullpath.suffix == '.csv':
-                df = pandas.read_csv(content)
-            elif fullpath.suffix == '.json':
-                df = pandas.read_json(content)
+        # # If the file exists and is not a directory, proceed with automation
+        # async with aiofiles.open(fullpath, 'r') as f:
+        #     content = io.BytesIO(await f.read())
+        #     if fullpath.suffix == '.csv':
+        #         df = pandas.read_csv(content)
+        #     elif fullpath.suffix == '.json':
+        #         df = pandas.read_json(content)
 
-        if not 'urls' in df.columns:
-            raise ValueError(f"The file {from_file} must contain a 'urls' column.")
+        # if not 'urls' in df.columns:
+        #     raise ValueError(f"The file {from_file} must contain a 'urls' column.")
         
-        url_instances: list[URL] = []
-        for url in df['urls']:
-            instance = URL(url)
-            url_instances.append(instance)
+        # url_instances: list[URL] = []
+        # for url in df['urls']:
+        #     instance = URL(url)
+        #     url_instances.append(instance)
 
-        await self._add_urls_to_redis(url_instances)
+        # await self._add_urls_to_redis(url_instances)
 
-        can_automate = True
-        while can_automate:
-            if self.redis_client is None:
-                logger.error("Redis client is not available.")
-                break
+        # can_automate = True
+        # while can_automate:
+        #     if self.redis_client is None:
+        #         logger.error("Redis client is not available.")
+        #         break
 
-            next_url = await self.redis_client.spop(self.urls_to_visit_key)
-            if next_url is None:
-                break
+        #     next_url = await self.redis_client.spop(self.urls_to_visit_key)
+        #     if next_url is None:
+        #         break
 
-            await self.on_page_actions(next_url, df=df, fullpath=fullpath)
-            await self.signals.notify(current_url=next_url)
-            await asyncio.sleep(10)
+        #     await self.on_page_actions(next_url, df=df, fullpath=fullpath)
+        #     await self.signals.notify(current_url=next_url)
+        #     await asyncio.sleep(10)
+        await self.on_page_actions(self.start_url, event=event)
 
     async def get_page_links(self) -> Sequence[URL]:
         await asyncio.sleep(3)

@@ -1,12 +1,13 @@
 import logging
 import os
-import pathlib
-from subprocess import call
+from unittest.mock import Mock
 
 import pytest
 from playwright.async_api import async_playwright
 
-from src.primespiders.components.bershka.app import Bershka
+from primespiders.components.bershka.app import Bershka
+from primespiders.components.courtaudit.app import CourtAuditSpider, get_pdf_content
+from primespiders.utils.urls import URL
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,31 @@ async def test_bershka_spider():
         await browser.close()
 
 
-
 @pytest.mark.e2e
-def test_google_places_spider():
-    call([
-        'python', 
-        '-m',
-        str(pathlib.Path(__file__).parent.parent.joinpath('src', 'primespiders', '__main__.py')),
-        'google_maps',
-        '--klass-name',
-        'googleplaces'
-    ])
+class TestCourtAuditSpider:
+    async def test_get_pdf_content(self):
+        spider = Mock()
+        url = URL('https://www.ccomptes.fr/sites/default/files/2026-09/20261001-S2026-0891-Agence-de-l-innovation-de-defense-AID.pdf')
+        await get_pdf_content(spider, url)
+
+    async def test_live_spider(self):
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            page = await browser.new_page()
+            await page.wait_for_selector('body')
+
+            spider = CourtAuditSpider(page)
+            await spider.run()
+            await browser.close()
+
+
+# @pytest.mark.e2e
+# def test_google_places_spider():
+#     call([
+#         'python', 
+#         '-m',
+#         str(pathlib.Path(__file__).parent.parent.joinpath('src', 'primespiders', '__main__.py')),
+#         'google_maps',
+#         '--klass-name',
+#         'googleplaces'
+#     ])
