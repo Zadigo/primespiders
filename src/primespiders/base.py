@@ -59,6 +59,7 @@ class BaseSpider(ABC):
         base_url_filters (Sequence[Callable[[URL], bool]]): Filters to apply to URLs.
         ignore_queries (bool): Whether to ignore URLs with query parameters when crawling.
         ignore_fragments (bool): Whether to ignore URLs with URL fragments when crawling.
+        multi_tab_mode (bool): Whether to enable multi-tab mode for the spider.
     """
 
     start_url: URL | None = None
@@ -67,6 +68,7 @@ class BaseSpider(ABC):
     base_url_filters: Sequence[Callable[[URL], bool]] = ()
     ignore_queries: bool = True
     ignore_fragments: bool = True
+    multi_tab_mode: bool = False
 
     def __init__(self, page: Page, *, with_id: str | None = None, automation: bool = False):
         self.page = page

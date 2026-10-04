@@ -7,7 +7,7 @@ from playwright.async_api import ElementHandle, Page
 
 from primespiders.base import BaseSpider
 from primespiders.components.courtaudit.models import PublicationModel
-from primespiders.observer import S3Observer
+from primespiders.observer import JsonFileObserver, S3Observer
 from primespiders.utils import logger
 from primespiders.utils.urls import URL
 
@@ -42,7 +42,10 @@ class CourtAuditSpider(BaseSpider):
 
     def __init__(self, page: Page, **kwargs):
         super().__init__(page, **kwargs)
+
         self.signals.attach(S3Observer())
+        self.signals.attach(JsonFileObserver('audit_files.pdf'))
+        
         self.automation = True
 
     async def run(self, **kwargs):
@@ -110,6 +113,7 @@ class CourtAuditSpider(BaseSpider):
 
                     async with asyncio.TaskGroup() as tg:
                         tg.create_task(get_pdf_content(self, url_object, model))
+            await self.signals.notify(current_url=self.start_url, tag='json')
             
             await self.page.go_back()
             await asyncio.sleep(2)

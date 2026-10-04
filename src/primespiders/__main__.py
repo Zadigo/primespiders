@@ -24,16 +24,21 @@ async def main(
     ignore_fragments: bool = True, 
     automate: bool = False, 
     file: str | None = None,
-    klass_name: str | None = None
+    klass_name: str | None = None,
+    tabs: int = 1
 ):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
+    async with async_playwright() as context:
+        browser = await context.chromium.launch(
             headless=headless,
             downloads_path=BASE_DIR.joinpath("downloads"),
             timeout=60000,
         )
 
         page = await browser.new_page()
+        if tabs > 1:
+            for _ in range(tabs - 1):
+                await browser.new_page()
+
         await page.wait_for_selector('body')
 
         try:
@@ -69,6 +74,9 @@ async def main(
 
             if candidate is not None:
                 instance = candidate(page, with_id=with_id, automation=automate)
+
+                if tabs > 1:
+                    instance.multi_tab_mode = True
 
                 if with_id is not None:
                     instance.job_uuid = with_id
@@ -146,6 +154,12 @@ if __name__ == '__main__':
         default=None,
         help="Specify a spider class to run when the app module contains multiple spider options"
     )
+    parser.add_argument(
+        "--tabs",
+        type=int,
+        default=1,
+        help="Specify the number of tabs to open"
+    )
 
     args = parser.parse_args()
     if args.debug:
@@ -162,6 +176,7 @@ if __name__ == '__main__':
                 automate=args.automate,
                 file=args.file,
                 klass_name=args.klass_name,
+                tabs=args.tabs,
             )
         )
     except KeyboardInterrupt:

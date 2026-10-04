@@ -43,9 +43,9 @@ class BaseSignalsContainer(ABC):
         """
 
     @abstractmethod
-    async def notify(self, *, current_url: TypeURL | None = None, **kwargs: Any) -> None:
+    async def notify(self, *, current_url: TypeURL | None = None, tag: str | None = None, **kwargs: Any) -> None:
         """
-        Notify all observers about an event.
+        Notify all observers about an event, optionally filtered by tag.
         """
 
 
@@ -66,9 +66,11 @@ class SignalsContainer(BaseSignalsContainer):
     def detach(self, observer: Observer) -> None:
         self._observers = [obs for obs in self._observers if obs != observer]
 
-    async def notify(self, *, current_url: TypeURL | None = None, **kwargs: Any) -> None:
+    async def notify(self, *, current_url: TypeURL | None = None, tag: str | None = None, **kwargs: Any) -> None:
         tasks: list[asyncio.Task] = []
         for observer in self._observers:
+            if tag is not None and observer.tag != tag:
+                continue
             tasks.append(asyncio.create_task(observer.update(current_url=current_url, **kwargs)))
         await asyncio.gather(*tasks)
                 
@@ -103,7 +105,7 @@ class Observer(ABC):
 class PerformanceCrawlObserver(Observer):
     """An observer that tracks the performance of the spider."""
 
-    tag = 'crawl'
+    tag = 'performance'
 
     async def update(self, **kwargs) -> None:
         await super().update(**kwargs)
@@ -171,7 +173,7 @@ class PerformanceCrawlObserver(Observer):
 class HistoryCrawlObserver(Observer):
     """An observer that tracks the navigation history of the spider."""
 
-    tag = 'crawl'
+    tag = 'history'
 
     async def update(self, **kwargs: Any) -> None:
         pass
@@ -227,7 +229,7 @@ class PostgresCrawlObserver(PostgresMixin,Observer):
     """An observer that tracks the performance of the spider and 
     stores it in a PostgreSQL database."""
 
-    tag = 'crawl'
+    tag = 'postgres'
 
     async def update(self, *, table: str | None = None, **kwargs: Any) -> None:
         if table is None:
@@ -251,7 +253,7 @@ class PostgresCrawlObserver(PostgresMixin,Observer):
 class RedisChannelObserver(Observer):
     """An observer that publishes updates to a Redis channel."""
 
-    tag = 'crawl'
+    tag = 'redis'
 
     def __init__(self):
         super().__init__()
@@ -281,7 +283,7 @@ class RedisChannelObserver(Observer):
 class S3Observer(Observer):
     """An observer that uploads/updates to an S3 bucket."""
 
-    tag = 'crawl'
+    tag = 's3'
 
     def __init__(self):
         super().__init__()
@@ -409,7 +411,7 @@ class S3Observer(Observer):
 class JsonFileObserver(Observer):
     """A JSON file observer that writes data to a JSON file asynchronously."""
 
-    tag = 'crawl'
+    tag = 'json'
 
     def __init__(self, filename: str, base_path: pathlib.Path | None = None):
         super().__init__()
@@ -423,7 +425,7 @@ class JsonFileObserver(Observer):
             'results': []
         }
 
-    async def update(self, data: dict[str, Any] | list[dict[str, Any]], **kwargs: Any) -> None:
+    async def update(self, **kwargs: Any) -> None:
         if not self.filepath.exists():
             self.filepath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -434,6 +436,7 @@ class JsonFileObserver(Observer):
             if existing_data:
                 self.template['results'] = json.loads(existing_data)
 
+            data: dict[str, Any] | list[dict[str, Any]] = kwargs.get('data')
             if isinstance(data, list):
                 self.template['results'].extend(data)
             else:
