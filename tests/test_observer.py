@@ -1,3 +1,6 @@
+import asyncio
+import json
+import pathlib
 from unittest.mock import AsyncMock, Mock, patch
 
 import aiofiles
@@ -5,6 +8,7 @@ import pytest
 
 from primespiders.observer import (
     HistoryCrawlObserver,
+    JsonFileObserver,
     PerformanceCrawlObserver,
     S3Observer,
     SignalsContainer,
@@ -104,3 +108,11 @@ class TestS3Observer:
                 file_key='rapports-cours-compte/test_file.txt'
             )
 
+
+
+async def test_file_observer(tmp_path):
+    test_file_name = 'test_file.json'
+    observer = JsonFileObserver(test_file_name)
+
+    data = {"key": "value"}
+    await observer.update(data)

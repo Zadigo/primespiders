@@ -3,11 +3,13 @@ import datetime
 import io
 import json
 import mimetypes
+import pathlib
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
 
+import aiofiles
 import boto3
 import pydantic
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
@@ -368,10 +370,9 @@ class S3Observer(Observer):
         else:
             buffer = io.BytesIO(file_content)
 
-        filename: str = kwargs.get('filename')
-        content_type = mimetypes.guess_type(filename)[0]
-
         file_key: str = kwargs.get('file_key')
+        content_type = mimetypes.guess_type(file_key)[0]
+
         extra_args = {'ContentType': content_type or 'application/octet-stream'}
         extra_args.update(ACL='public-read')
 
@@ -383,11 +384,46 @@ class S3Observer(Observer):
                 ExtraArgs=extra_args
             )
         except ClientError as e:
-            logger.error(f"Failed to upload file: {filename}. Error: {e!s}")
+            logger.error(f"Failed to upload file: {file_key}. Error: {e!s}")
         except (NoCredentialsError, BotoCoreError) as e:
             logger.error(str(e))
             raise
         else:
             self.upload_count += 1
-            self.uploaded_files.append(filename)
-            logger.info(f"    + OK Uploaded {filename} to {file_key}")
+            self.uploaded_files.append(file_key)
+            logger.info(f"OK Uploaded {file_key}")
+
+
+class JsonFileObserver(Observer):
+    """A JSON file observer that writes data to a JSON file asynchronously."""
+
+    def __init__(self, filename: str, base_path: pathlib.Path | None = None):
+        super().__init__()
+
+        fullpath = base_path or pathlib.Path(__file__).parent.absolute()
+        self.filepath = fullpath / 'data' / filename
+        
+        self.template: dict[str, Any] = {
+            'created_at': datetime.utcnow().isoformat(),
+            'timestamp': datetime.utcnow().isoformat(),
+            'results': []
+        }
+
+    async def update(self, data: dict[str, Any] | list[dict[str, Any]], **kwargs: Any) -> None:
+        if not self.filepath.exists():
+            self.filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        self.template['timestamp'] = datetime.utcnow().isoformat()
+
+        async with asyncio.Lock(), aiofiles.open(self.filepath, 'w+') as f:
+            existing_data = await f.read()
+            if existing_data:
+                self.template['results'] = json.loads(existing_data)
+
+            if isinstance(data, list):
+                self.template['results'].extend(data)
+            else:
+                self.template['results'].append(data)
+            await f.write(json.dumps(self.template, ensure_ascii=False, indent=4))
+        
+        logger.info(f"OK Written {self.filepath}")

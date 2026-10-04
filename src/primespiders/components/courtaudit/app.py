@@ -2,6 +2,7 @@ import asyncio
 import io
 
 import httpx2
+import unidecode
 from playwright.async_api import ElementHandle, Page
 
 from primespiders.base import BaseSpider
@@ -11,8 +12,12 @@ from primespiders.utils import logger
 from primespiders.utils.urls import URL
 
 
-async def get_pdf_content(spider: CourtAuditSpider, url: URL):
-    async with asyncio.timeout(10), httpx2.AsyncClient() as client:
+async def get_pdf_content(spider: CourtAuditSpider, url: URL, model: PublicationModel):
+    async with asyncio.Semaphore(10), httpx2.AsyncClient(timeout=10) as client:
+        file_key = f'rapports-cours-compte/{model.slug}.pdf'
+        if file_key in spider.redis_client.smembers('uploaded_files'):
+            return
+
         try:
             response = await client.get(str(url))
             response.raise_for_status()
@@ -24,9 +29,10 @@ async def get_pdf_content(spider: CourtAuditSpider, url: URL):
             return
         else:
             buffer = io.BytesIO(response.content)
-            spider.signals.notify(
-                filename=None,
-                file_key=None,
+            spider.redis_client.sadd('uploaded_files', file_key)
+
+            await spider.signals.notify(
+                file_key=f'rapports-cours-compte/{model.slug}.pdf',
                 file_content=buffer
             )
         
@@ -42,7 +48,7 @@ class CourtAuditSpider(BaseSpider):
     async def run(self, **kwargs):
         await super().run(**kwargs)
 
-    async def on_page_actions(self, current_url, *, tg = None, **kwargs):
+    async def on_page_actions(self, current_url, **kwargs):
         state = self.redis_client.get('started')
         if state is None:
             self.redis_client.set('started', 'true')
@@ -69,6 +75,9 @@ class CourtAuditSpider(BaseSpider):
             title_handle= await self.page.query_selector('h1')
             if title_handle is not None:
                 model.title = await title_handle.inner_text()
+
+                str_title = model.title.lower().replace("'", "-").replace(' ', '-')
+                model.slug = unidecode.unidecode(str_title)
 
             theme_handle = await self.page.query_selector('span.text-thematic')
             if theme_handle is not None:
@@ -99,11 +108,9 @@ class CourtAuditSpider(BaseSpider):
                     url_object = URL(str_href, root_domain=self.start_url.domain)
                     model.pdf_url = str(url_object)
 
-                    t1 = asyncio.create_task(get_pdf_content(self, url_object))
-                    t1.add_done_callback(lambda fut: logger.info("Downloaded PDF content..."))
-
-                    await t1
-
+                    async with asyncio.TaskGroup() as tg:
+                        tg.create_task(get_pdf_content(self, url_object, model))
+            
             await self.page.go_back()
             await asyncio.sleep(2)
 
