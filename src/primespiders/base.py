@@ -225,7 +225,9 @@ class BaseSpider(ABC):
         default_interval = 10 if self.automation else 40
         interval = ENV.integer('SPIDER_INTERVAL', default=default_interval)
         # ENV.conditional('SPIDER_INTERVAL').greater_than_equal_to(10)
-        if ENV.boolean('DEBUG', default=False):
+
+        debug_mode = ENV.boolean('DEBUG', default=False)
+        if debug_mode:
             interval = 1
 
         if self.automation:
@@ -240,6 +242,10 @@ class BaseSpider(ABC):
             while event.is_set():
                 schedule.run_pending()
                 await asyncio.sleep(1)
+
+                if debug_mode:
+                    event.clear()
+                    logger.info("Debug mode active, stopping automation loop.")
         else:
             urls = await self.get_page_links()
             await self._add_urls_to_redis(urls)
@@ -291,7 +297,7 @@ class BaseSpider(ABC):
 
         await asyncio.sleep(10)
 
-        if os.environ.get('DEBUG') == 'True':
+        if ENV.boolean('DEBUG', default=False):
             self.can_crawl = False
             return
 

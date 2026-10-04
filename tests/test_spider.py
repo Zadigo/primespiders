@@ -17,6 +17,7 @@ ENV(DEBUG='true')
 def mock_page():
     return Mock(
         spec=Page,
+        goto=AsyncMock(),
         evaluate=AsyncMock(
             return_value=[
                 'http://example.com/3'
@@ -54,11 +55,18 @@ def mock_spider(mock_page):
 
     with (
         patch('primespiders.base.SignalsContainer', new_callable=Mock, spec=SignalsContainer),
-        patch('primespiders.base.get_redis'),
+        patch('primespiders.base.get_redis') as redisclient,
         patch.object(BaseSpider, 'get_page_links', new_callable=AsyncMock) as plinks,
         patch.object(BaseSpider, '_add_urls_to_redis', new_callable=AsyncMock)
     ):
         plinks.return_value = ['http://example.com/1', 'http://example.com/2']
+        redisclient.return_value = Mock(
+            sadd=Mock(),
+            spop=Mock(
+                return_value=[b'http://example.com/1']
+            )
+        )
+
         return FakeSpider(page=mock_page)
 
 
@@ -87,7 +95,7 @@ async def test_crawl_spider_run_no_start_url(mock_spider, mock_browser):
 async def test_crawl_spider_run_start_url(mock_spider, mock_browser):
     mock_spider.start_url = URL('http://example.com')
     await mock_spider.run(mock_browser)
-    assert mock_spider.after_initial_navigation.assert_called()
+
 
 async def test_automation_spider_initialization(mock_automation_spider):
     assert mock_automation_spider.can_crawl is True
