@@ -1,12 +1,10 @@
 import unidecode
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
+
+from primespiders.components.models import BaseStudyModel
 
 
-class PublicationModel(BaseModel):
-    title: str | None = Field(
-        default=None,
-        description="The title of the publication"
-    )
+class PublicationModel(BaseStudyModel):
     theme: str | None = Field(
         default=None,
         description="The theme of the publication"
@@ -19,21 +17,9 @@ class PublicationModel(BaseModel):
         default=None,
         description="The URL of the publication"
     )
-    pdf_url: str | None = Field(
-        default=None,
-        description="The URL of the PDF of the publication"
-    )
-    date: str | None = Field(
-        default=None,
-        description="The date of the publication"
-    )
     summary: str | None = Field(
         default=None,
         description="The summary of the publication"
-    )
-    slug: str | None = Field(
-        default=None,
-        description="The slug of the publication"
     )
 
     @model_validator(mode='before')

@@ -121,6 +121,7 @@ class CourtAuditSpider(BaseSpider):
         for index, item in enumerate(pagination_handles):
             link_loc = await item.query_selector('a')
             loc_class = await item.get_attribute('class')
+            
             if 'pager-current' in loc_class:
                 if index + 1 < len(pagination_handles):
                     next_page_handle = pagination_handles[index + 1]
