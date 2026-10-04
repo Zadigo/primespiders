@@ -57,6 +57,9 @@ async def main(
             for _, klass in klasses:
                 if issubclass(klass, BaseSpider):
                     candidate = klass
+                    if klass_name is not None and klass.__name__.casefold() == klass_name.casefold():
+                        candidate = klass
+                        break
                     count += 1
 
             if count > 1 and klass_name is None:
@@ -65,32 +68,29 @@ async def main(
                     "Please provide the --klass-name argument to choose a specific spider to run."
                 )
                 return
-            else:
-                if klass_name is not None:
-                    for _, klass in klasses:
-                        if issubclass(klass, BaseSpider) and klass.__name__.casefold() == klass_name.casefold():
-                            candidate = klass
-                            break
 
-            if candidate is not None:
-                instance = candidate(page, with_id=with_id, automation=automate)
+            if candidate is None:
+                raise SystemExit(f"No suitable candidate class found in module {mod.__name__}")
 
-                if tabs > 1:
-                    instance.multi_tab_mode = True
+            instance = candidate(page, with_id=with_id, automation=automate)
 
-                if with_id is not None:
-                    instance.job_uuid = with_id
+            if tabs > 1:
+                instance.multi_tab_mode = True
 
-                try:
-                    await instance.run(
-                        ignore_queries=ignore_queries,
-                        ignore_fragments=ignore_fragments,
-                    )
-                except (TypeError, ValueError) as e:
-                    await browser.close()
-                    raise ExceptionGroup("Error running spider", [e])
-                
+            if with_id is not None:
+                instance.job_uuid = with_id
+
+            try:
+                await instance.run(
+                    browser=browser,
+                    ignore_queries=ignore_queries,
+                    ignore_fragments=ignore_fragments,
+                )
+            except (TypeError, ValueError) as e:
                 await browser.close()
+                raise ExceptionGroup("Error running spider", [e])
+            
+            await browser.close()
 
 
 if __name__ == '__main__':

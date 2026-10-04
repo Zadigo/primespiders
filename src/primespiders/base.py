@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pydantic
 import schedule
-from playwright.async_api import Page
+from playwright.async_api import Browser, Page
 
 from primespiders.observer import (
     HistoryCrawlObserver,
@@ -16,7 +16,7 @@ from primespiders.observer import (
     SignalsContainer,
 )
 from primespiders.typings import EcommerceMixinProtocol, TypeUrls
-from primespiders.utils import logger
+from primespiders.utils import ENV, logger
 from primespiders.utils.clients import get_redis
 from primespiders.utils.operators import BaseCondition
 from primespiders.utils.urls import URL
@@ -45,12 +45,40 @@ class EcommerceMixin:
         return False
 
 
+class MultiTabRunner:
+    """Method wrapper for enabling multi-tab mode in spiders."""
+
+    def __init__(self):
+        self.pages: list[Page] = []
+
+    async def __call__(self, spider: BaseSpider, urls: Sequence[URL], **kwargs):
+        if not self.pages:
+            for _ in range(len(urls)):
+                page = await spider.browser.new_page()
+                self.pages.append(page)
+
+        for index, url in enumerate(urls):
+            try:
+                page = self.pages[index]
+                await page.goto(str(url), timeout=2000, wait_until="domcontentloaded")
+            except (TypeError, ValueError) as e:
+                logger.error(f"Error processing URL {url}: {e}")
+            else:
+                await asyncio.sleep(1)
+
+            try:
+                await spider.on_page_actions(url, page=page, **kwargs)
+            except (TypeError, ValueError) as e:
+                logger.error(f"Error processing URL {url}: {e}")
+
+
 class BaseSpider(ABC):
     """Base class for all spiders.
 
     Args:
         page (Page): The Playwright page instance for the spider.
-        ignore_queries (bool): Whether to ignore URLs with query parameters when crawling.
+        with_id (str | None): The unique identifier for the spider instance.
+        automation (bool): Whether the spider is running in automation mode.
 
     Attributes:
         start_url (URL | None): The starting URL for the spider.
@@ -60,6 +88,12 @@ class BaseSpider(ABC):
         ignore_queries (bool): Whether to ignore URLs with query parameters when crawling.
         ignore_fragments (bool): Whether to ignore URLs with URL fragments when crawling.
         multi_tab_mode (bool): Whether to enable multi-tab mode for the spider.
+        urls_to_visit_key (str | None): The Redis key for storing URLs to visit.
+        visited_urls_key (str | None): The Redis key for storing visited URLs.
+        seen_urls_key (str | None): The Redis key for storing seen URLs.
+        automation (bool): Whether the spider is running in automation mode.
+        signals (SignalsContainer): The container for managing spider signals.
+        can_crawl (bool): Whether the spider can keep crawling to discover and visit new pages.
     """
 
     start_url: URL | None = None
@@ -71,6 +105,7 @@ class BaseSpider(ABC):
     multi_tab_mode: bool = False
 
     def __init__(self, page: Page, *, with_id: str | None = None, automation: bool = False):
+        self.browser: Browser | None = None
         self.page = page
 
         self._accepted_domain: str | None = None
@@ -156,8 +191,17 @@ class BaseSpider(ABC):
         return list(filter(lambda u: u.is_not_none, hrefs))
 
     @abstractmethod
-    async def run(self, ignore_queries: bool = True, ignore_fragments: bool = True):
-        """Run the crawling process starting from the start URL."""
+    async def run(self, browser: Browser, ignore_queries: bool = True, ignore_fragments: bool = True):
+        """Main entrypoint that runs either the automation or the crawling process.
+        Args:
+            browser (Browser): The Playwright browser instance to use for interactions.
+            ignore_queries (bool): Whether to ignore URLs with query parameters.
+            ignore_fragments (bool): Whether to ignore URLs with URL fragments.
+
+        Raises:
+            ValueError: If the start URL is not defined.
+        """
+        self.browser = browser
         self.ignore_queries = ignore_queries
         self.ignore_fragments = ignore_fragments
 
@@ -177,16 +221,21 @@ class BaseSpider(ABC):
             await self.after_initial_navigation()
         except (TypeError, ValueError) as e:
             logger.error(f"Error during after_initial_navigation: {e}")
-        
+
+        default_interval = 10 if self.automation else 40
+        interval = ENV.integer('SPIDER_INTERVAL', default=default_interval)
+        # ENV.conditional('SPIDER_INTERVAL').greater_than_equal_to(10)
+        if ENV.boolean('DEBUG', default=False):
+            interval = 1
+
         if self.automation:
             logger.info("Starting automation...")
-            await self.automate()
+            # await self.automate()
 
-            # TODO: Use CRON to run the automation
             event: asyncio.Event = asyncio.Event()
             event.set()
-
-            schedule.every(10).seconds.do(lambda: asyncio.create_task(self.automate()))
+            
+            schedule.every(interval).seconds.do(lambda: asyncio.create_task(self.automate()))
             
             while event.is_set():
                 schedule.run_pending()
@@ -195,7 +244,7 @@ class BaseSpider(ABC):
             urls = await self.get_page_links()
             await self._add_urls_to_redis(urls)
 
-            schedule.every(40).seconds.do(lambda: asyncio.create_task(self.crawl()))
+            schedule.every(interval).seconds.do(lambda: asyncio.create_task(self.crawl()))
 
             # This is the section that
             # handles crawling from page to page
@@ -204,46 +253,6 @@ class BaseSpider(ABC):
                 while self.can_crawl:
                     schedule.run_pending()
                     await asyncio.sleep(1)
-
-                    # current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
-                    # if not current_url:
-                    #     logger.info("No more URLs to crawl.")
-                    #     self.can_crawl = False
-                    #     break
-
-                    # next_url = URL(
-                    #     current_url[0].decode('utf-8'), 
-                    #     root_domain=self._accepted_domain
-                    # )
-                    # if not next_url.is_valid:
-                    #     logger.warning(f"Invalid URL encountered: {next_url}")
-                    #     continue
-
-                    # logger.info(f"Navigating to next URL: {next_url}")
-                    # await self.page.goto(
-                    #     str(next_url),
-                    #     timeout=self.default_timeout,
-                    #     wait_until='domcontentloaded'
-                    # )
-
-                    # self.redis_client.sadd(self.visited_urls_key, str(next_url))
-                    # urls = await self.get_page_links()
-
-                    # async with asyncio.TaskGroup() as tg:
-                    #     tg.create_task(self._add_urls_to_redis(urls))
-
-                    #     try:
-                    #         await tg.create_task(self.on_page_actions(current_url, tg=tg))
-                    #     except Exception as e:
-                    #         logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
-
-                    #     await tg.create_task(self.signals.notify(current_url=next_url))
-
-                    # await asyncio.sleep(10)
-
-                    # if os.environ.get('DEBUG') == 'True':
-                    #     self.can_crawl = False
-                    #     break
 
     async def crawl(self):
         current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
@@ -303,47 +312,7 @@ class BaseSpider(ABC):
             self.redis_client.sadd(self.seen_urls_key, *all_urls)
 
     async def automate(self, *, event: asyncio.Event | None = None, from_file: str | None = None):
-        # if from_file is None:
-        #     raise ValueError("No file specified for automation.")
-
-        # fullpath = pathlib.Path(from_file)
-        # if not fullpath.exists():
-        #     raise FileNotFoundError(f"The file {from_file} does not exist.")
-
-        # if fullpath.is_dir():
-        #     raise IsADirectoryError(f"The path {from_file} is a directory, expected a file.")
-
-        # # If the file exists and is not a directory, proceed with automation
-        # async with aiofiles.open(fullpath, 'r') as f:
-        #     content = io.BytesIO(await f.read())
-        #     if fullpath.suffix == '.csv':
-        #         df = pandas.read_csv(content)
-        #     elif fullpath.suffix == '.json':
-        #         df = pandas.read_json(content)
-
-        # if not 'urls' in df.columns:
-        #     raise ValueError(f"The file {from_file} must contain a 'urls' column.")
-        
-        # url_instances: list[URL] = []
-        # for url in df['urls']:
-        #     instance = URL(url)
-        #     url_instances.append(instance)
-
-        # await self._add_urls_to_redis(url_instances)
-
-        # can_automate = True
-        # while can_automate:
-        #     if self.redis_client is None:
-        #         logger.error("Redis client is not available.")
-        #         break
-
-        #     next_url = await self.redis_client.spop(self.urls_to_visit_key)
-        #     if next_url is None:
-        #         break
-
-        #     await self.on_page_actions(next_url, df=df, fullpath=fullpath)
-        #     await self.signals.notify(current_url=next_url)
-        #     await asyncio.sleep(10)
+        """Run automation actions on every page starting from the start URL."""
         await self.on_page_actions(self.start_url, event=event)
 
     async def get_page_links(self) -> Sequence[URL]:

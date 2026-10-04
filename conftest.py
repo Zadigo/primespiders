@@ -10,7 +10,7 @@ def playwright_page():
 
 
 @pytest.fixture
-def base_spider(playwright_page):
+def spider_fixture(playwright_page):
     from src.primespiders.base import BaseSpider
 
     class SimpleSpider(BaseSpider):

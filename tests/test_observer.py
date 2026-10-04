@@ -73,9 +73,9 @@ class TestPerformanceObserver:
             await observer.update(current_url="http://example.com")
 
     @pytest.mark.e2e
-    async def test_save_data(self, base_spider):
+    async def test_save_data(self, spider_fixture):
         observer = PerformanceCrawlObserver()
-        observer.spider = base_spider
+        observer.spider = spider_fixture
         await observer.update()
 
 
