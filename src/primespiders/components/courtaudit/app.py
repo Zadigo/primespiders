@@ -4,7 +4,7 @@ import io
 import httpx2
 from playwright.async_api import ElementHandle, Page
 
-from primespiders.base import BaseSpider
+from primespiders.base import AutomationSpider
 from primespiders.components.courtaudit.models import PublicationModel
 from primespiders.observer import JsonFileObserver, S3Observer
 from primespiders.utils import logger
@@ -12,7 +12,7 @@ from primespiders.utils.slug import create_slug
 from primespiders.utils.urls import URL
 
 
-async def get_pdf_content(spider: CourtAuditSpider, url: URL, model: PublicationModel):
+async def get_pdf_content(spider: AutomationSpider, url: URL, model: PublicationModel):
     async with asyncio.Semaphore(10), httpx2.AsyncClient(timeout=10) as client:
         file_key = f'rapports-cours-compte/{model.slug}.pdf'
         if file_key in spider.redis_client.smembers('uploaded_files'):
@@ -37,7 +37,7 @@ async def get_pdf_content(spider: CourtAuditSpider, url: URL, model: Publication
             )
         
 
-class CourtAuditSpider(BaseSpider):
+class CourtAuditSpider(AutomationSpider):
     start_url = URL('https://www.ccomptes.fr/fr/publications?f%5B0%5D=institution%3A98%3Fpage%3D360&page=0')
 
     def __init__(self, page: Page, **kwargs):

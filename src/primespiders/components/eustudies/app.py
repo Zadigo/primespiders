@@ -4,13 +4,13 @@ import io
 import httpx2
 from playwright.async_api import ElementHandle
 
-from primespiders.base import BaseSpider
+from primespiders.base import AutomationSpider
 from primespiders.components.eustudies.models import EuStudyModel
 from primespiders.observer import JsonFileObserver, S3Observer
 from primespiders.utils.urls import URL
 
 
-async def parse_article(spider: EuStudies, tg: asyncio.TaskGroup, article: ElementHandle):
+async def parse_article(spider: AutomationSpider, tg: asyncio.TaskGroup, article: ElementHandle):
     model = EuStudyModel()
 
     metadata_handle = await article.query_selector_all('.ecl-file__detail-meta li')
@@ -38,7 +38,7 @@ async def parse_article(spider: EuStudies, tg: asyncio.TaskGroup, article: Eleme
     tg.create_task(download_pdf_file(spider, model))
 
 
-async def download_pdf_file(spider: EuStudies, model: EuStudyModel):
+async def download_pdf_file(spider: AutomationSpider, model: EuStudyModel):
     async with asyncio.Semaphore(5), httpx2.AsyncClient() as client:
         storage_key = spider.storage_key_template + ':downloaded'
         files = spider.redis_client.smembers(storage_key)
@@ -64,7 +64,7 @@ async def download_pdf_file(spider: EuStudies, model: EuStudyModel):
                 )
 
 
-class EuStudies(BaseSpider):
+class EuStudies(AutomationSpider):
     start_url = URL('https://data.europa.eu/en/publications/studies?search=&keywords=&sort_by=published_on&sort_order=DESC&items_per_page=50')
     storage_key_template = 'primespiders:eustudies'
 

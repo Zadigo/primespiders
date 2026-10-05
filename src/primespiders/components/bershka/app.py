@@ -1,6 +1,6 @@
 import asyncio
 
-from primespiders.base import BaseSpider, EcommerceMixin
+from primespiders.base import CrawlerSpider, EcommerceMixin
 from primespiders.components.bershka.models import ProductModel
 from primespiders.components.bershka.url_filters import remove_static_page
 from primespiders.url_filters import (
@@ -13,7 +13,7 @@ from primespiders.utils import logger
 from primespiders.utils.operators import And, Q, Rules
 
 
-class Bershka(EcommerceMixin, BaseSpider):
+class Bershka(EcommerceMixin, CrawlerSpider):
     start_url: str | None = "https://www.bershka.com/fr/h-woman.html"
 
     @property
@@ -69,7 +69,6 @@ class Bershka(EcommerceMixin, BaseSpider):
                 template['url'] = str(current_url)
                 model = ProductModel(**template)
                 self.signals.notify(current_url=current_url, product=model.model_dump())
-
 
     async def after_initial_navigation(self):
         # Cookie

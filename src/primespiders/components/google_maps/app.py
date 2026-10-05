@@ -6,7 +6,7 @@ from base64 import urlsafe_b64encode
 import polars
 from playwright.async_api import Error
 
-from primespiders.base import BaseSpider
+from primespiders.base import AutomationSpider
 from primespiders.components.google_maps.models import GooglePlaceModel
 from primespiders.typings import BaseSpiderProtocol
 from primespiders.utils import logger
@@ -102,8 +102,7 @@ class BaseGoogleMaps(ABC):
             await asyncio.sleep(10)
 
 
-
-class GooglePlaces(BaseGoogleMaps, BaseSpider):
+class GooglePlaces(BaseGoogleMaps, AutomationSpider):
     """Google Places spider for scraping places from Google Maps."""
 
     # def __init__(self, **kwargs: Any):
@@ -126,7 +125,7 @@ class GooglePlaces(BaseGoogleMaps, BaseSpider):
         pass
             
 
-class GooglePlace(BaseGoogleMaps, BaseSpider):
+class GooglePlace(BaseGoogleMaps, AutomationSpider):
     """Google Place spider for scraping a single place from Google Maps."""
 
     start_url: str = 'https://www.google.com/maps/place/Grande+Pharmacie+de+Lille/@50.61921,3.0031802,14z/data=!4m10!1m2!2m1!1spharmacie+lille!3m6!1s0x47c2d573496fa237:0x2dd485f0ab4a9155!8m2!3d50.61921!4d3.041289!15sCg9waGFybWFjaWUgbGlsbGVaESIPcGhhcm1hY2llIGxpbGxlkgEIcGhhcm1hY3ngAQA!16s%2Fg%2F1v16pg3_?entry=ttu&g_ep=EgoyMDI2MDkyOS4wIKXMDSoASAFQAw%3D%3D'
