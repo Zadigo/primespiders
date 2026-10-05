@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from playwright.async_api import Browser, ElementHandle, Page
 
-from primespiders.base import BaseSpider
+from primespiders.base import AutomationSpider, BaseSpider, CrawlerSpider
 from primespiders.observer import SignalsContainer
 from primespiders.utils import ENV
 from primespiders.utils.urls import URL
@@ -48,8 +48,8 @@ def mock_browser():
 
 
 @pytest.fixture
-def mock_spider(mock_page):
-    class FakeSpider(BaseSpider):
+def crawl_spider(mock_page):
+    class FakeSpider(CrawlerSpider):
         async def run(self, *args, **kwargs):
             return await super().run(*args, **kwargs)
 
@@ -71,8 +71,8 @@ def mock_spider(mock_page):
 
 
 @pytest.fixture
-def mock_automation_spider(mock_page):
-    class FakeAutomationSpider(BaseSpider):
+def automation_spider(mock_page):
+    class FakeAutomationSpider(AutomationSpider):
         async def run(self, *args, **kwargs):
             return await super().run(*args, **kwargs)
 
@@ -83,31 +83,30 @@ def mock_automation_spider(mock_page):
         return FakeAutomationSpider(page=mock_page, automation=True)
 
 
-async def test_crawl_spider_initialization(mock_spider):
-    assert mock_spider.can_crawl is True
+async def test_crawl_spider_initialization(crawl_spider):
+    assert crawl_spider.can_crawl is True
 
 
-async def test_crawl_spider_run_no_start_url(mock_spider, mock_browser):
+async def test_crawl_spider_run_start_url(crawl_spider, mock_browser):
+    crawl_spider.start_url = URL('http://example.com')
+    await crawl_spider.run(mock_browser)
+
+
+async def test_crawl_spider_run_no_start_url(crawl_spider, mock_browser):
     with pytest.raises(ValueError):
-        await mock_spider.run(mock_browser)
+        await crawl_spider.run(mock_browser)
 
 
-async def test_crawl_spider_run_start_url(mock_spider, mock_browser):
-    mock_spider.start_url = URL('http://example.com')
-    await mock_spider.run(mock_browser)
+async def test_automation_spider_initialization(automation_spider):
+    assert automation_spider.can_crawl is True
 
 
-async def test_automation_spider_initialization(mock_automation_spider):
-    assert mock_automation_spider.can_crawl is True
-    assert mock_automation_spider.storage_key_template.endswith('automation')
-
-
-async def test_url_filters(mock_automation_spider):
+async def test_url_filters(automation_spider):
     urls = [
         URL('http://example.com/1', root_domain='example.com'),
         URL('http://example.com/2', root_domain='example.com'),
         URL('http://other.com/1', root_domain='other.com')
     ]
-    filtered_urls = await mock_automation_spider.run_url_filters(urls)
+    filtered_urls = await automation_spider.run_url_filters(urls)
     assert all(url.check_domain('example.com') for url in filtered_urls)
     assert all(url.root_domain == 'example.com' for url in filtered_urls)

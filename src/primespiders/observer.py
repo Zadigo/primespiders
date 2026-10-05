@@ -112,12 +112,10 @@ class PerformanceCrawlObserver(Observer):
 
         redis_db = get_redis()
         if redis_db is not None:
-            storage_key = f"primespiders:{self.spider.job_uuid}__performance"
-
             # Get the count of URLs to visit, visited URLs, and seen URLs
-            urls_to_visit_count = redis_db.scard(self.spider.urls_to_visit_key)
-            visited_urls_count = redis_db.scard(self.spider.visited_urls_key)
-            seen_urls_count = redis_db.scard(self.spider.seen_urls_key)
+            urls_to_visit_count = redis_db.scard(self.spider.urls_to_visit_storage_key)
+            visited_urls_count = redis_db.scard(self.spider.visited_urls_storage_key)
+            seen_urls_count = redis_db.scard(self.spider.seen_urls_storage_key)
 
             completion_pct = 0
             if urls_to_visit_count > 0:
@@ -133,9 +131,9 @@ class PerformanceCrawlObserver(Observer):
 
             current_date = datetime.datetime.now(tz=datetime.UTC)
             # Check the started on timestamp and update if necessary
-            started_on = redis_db.hget(storage_key, 'started_on')
+            started_on = redis_db.hget(self.spider.performance_storage_key, 'started_on')
             if started_on is None:
-                redis_db.hset(storage_key, mapping={'started_on': str(current_date)})
+                redis_db.hset(self.spider.performance_storage_key, mapping={'started_on': str(current_date)})
 
             # template = {
             #     'urls_to_visit_count': urls_to_visit_count,
@@ -157,7 +155,7 @@ class PerformanceCrawlObserver(Observer):
                 last_updated=str(current_date)
             )
 
-            redis_db.hset(storage_key, mapping=model.model_dump())
+            redis_db.hset(self.spider.performance_storage_key, mapping=model.model_dump())
             logger.info(f"Saved performance data. {model.completion_pct}% complete")
 
             # Send to Redis subscribers

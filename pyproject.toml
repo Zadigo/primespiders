@@ -21,6 +21,7 @@ dependencies = [
     "pytz>=2026.4",
     "redis>=8.1.0",
     "schedule>=1.2.2",
+    "simplecron>=0.1.0a5",
     "turboenv>=0.2.0a3",
     "unidecode>=1.4.0",
 ]

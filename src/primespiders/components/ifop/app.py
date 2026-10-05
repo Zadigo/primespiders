@@ -3,12 +3,12 @@ import io
 
 import httpx2
 
-from primespiders.base import BaseSpider
+from primespiders.base import AutomationSpider
 from primespiders.components.ifop.models import IfopStudyModel
 from primespiders.utils.dates import parse_date
 
 
-async def download_pdf_file(spider: IfopSpider, model: IfopStudyModel):
+async def download_pdf_file(spider: AutomationSpider, model: IfopStudyModel):
     async with asyncio.Semaphore(5), httpx2.AsyncClient() as client:
         files = spider.redis_client.smembers(spider.processed_storage_key)
         if spider.redis_client is not None and model.pdf_url in files:
@@ -33,7 +33,7 @@ async def download_pdf_file(spider: IfopSpider, model: IfopStudyModel):
                 )
 
 
-class IfopSpider(BaseSpider):
+class IfopSpider(AutomationSpider):
     async def before_page_actions(self):
         if self.redis_client is not None:
             current_page = self.redis_client.get(self.pagination_storage_key)

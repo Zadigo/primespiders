@@ -4,7 +4,23 @@ PrimeSpiders is a collection of spiders used for growth marketing and web scrapp
 
 ## Features
 
-* MCP server to
+* MCP server to manage and coordinate automation spiders.
+
+## Architecture
+
+```mermaid
+graph TD
+
+M(Main) --> B(BaseSpider)
+B --> A(AutomationSpider)
+B --> C(CrawlSpider)
+A --> S(Scheduler)
+C --> S
+S --> |Loop|CA(Callback function)
+CA --> BE[[Before page actions]]
+CA --> PA[[Page actions]]
+CA --> AF[[After page actions]]
+```
 
 # Commands
 

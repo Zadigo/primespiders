@@ -1,13 +1,13 @@
 import asyncio
-import uuid
+import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from typing import Any
 from uuid import uuid4
 
 import pydantic
-import schedule
 from playwright.async_api import Browser, Page
+from simplecron import base as simplecron_base
 
 from primespiders.observer import (
     HistoryCrawlObserver,
@@ -24,6 +24,8 @@ from primespiders.utils.urls import URL
 IN_BETWEEN_PAGE_DELAY = ENV.integer('IN_BETWEEN_PAGE_DELAY', default=10)
 
 DEFAULT_TIMEOUT = ENV.integer('DEFAULT_TIMEOUT', default=10000)
+
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 
 class EcommerceMixin:
@@ -76,6 +78,16 @@ class MultiTabRunner:
                 logger.error(f"Error processing URL {url}: {e}")
 
 
+class CallbackRunner:
+    """Method wrapper for enabling callback execution in spiders."""
+
+    def __init__(self, spider: BaseSpider):
+        self._spider = spider
+
+    async def __call__(self, *args, **kwargs):
+        asyncio.create_task(self._spider.callback_function(*args, **kwargs))
+
+
 class BaseSpider(ABC):
     """Base class for all spiders.
 
@@ -92,23 +104,21 @@ class BaseSpider(ABC):
         ignore_queries (bool): Whether to ignore URLs with query parameters when crawling.
         ignore_fragments (bool): Whether to ignore URLs with URL fragments when crawling.
         multi_tab_mode (bool): Whether to enable multi-tab mode for the spider.
-        urls_to_visit_key (str | None): The Redis key for storing URLs to visit.
-        visited_urls_key (str | None): The Redis key for storing visited URLs.
-        seen_urls_key (str | None): The Redis key for storing seen URLs.
         automation (bool): Whether the spider is running in automation mode.
         signals (SignalsContainer): The container for managing spider signals.
         can_crawl (bool): Whether the spider can keep crawling to discover and visit new pages.
     """
 
     start_url: URL | None = None
-    storage_key_template: str = "primespiders:{job_uuid}{suffix}"
+    # storage_key_template: str = "primespiders:{job_uuid}{suffix}"
     default_timeout: int = DEFAULT_TIMEOUT
     base_url_filters: Sequence[Callable[[URL], bool]] = ()
     ignore_queries: bool = True
     ignore_fragments: bool = True
     multi_tab_mode: bool = False
+    automation: bool = False
 
-    def __init__(self, page: Page, *, with_id: str | None = None, automation: bool = False):
+    def __init__(self, page: Page, *, with_id: str | None = None):
         self.browser: Browser | None = None
         self.page = page
 
@@ -116,44 +126,22 @@ class BaseSpider(ABC):
         self.redis_client = get_redis()
         self.job_uuid = with_id or uuid4()
 
-        self.urls_to_visit_key: str | None = None
-        self.visited_urls_key: str | None = None
-        self.seen_urls_key: str | None = None
-
-        self.automation = automation
-        # Storage keys for Redis
-        if not self.automation:
-            self.urls_to_visit_key = self.storage_key_template.format(
-                job_uuid=self.job_uuid,
-                suffix=":urls_to_visit"
-            )
-            self.visited_urls_key = self.storage_key_template.format(
-                job_uuid=self.job_uuid,
-                suffix=":visited_urls"
-            )
-            self.seen_urls_key = self.storage_key_template.format(
-                job_uuid=self.job_uuid,
-                suffix=":seen_urls"
-            )
-
-            if self.redis_client is not None:
-                self.redis_client.sadd(self.visited_urls_key, str(self.start_url))
-        else:
-            self.storage_key_template = self.storage_key_template.format(
-                job_uuid=self.job_uuid, 
-                suffix=":automation"
-            )
-
         logger.info(f"Initializing spider with job UUID: {self.job_uuid}")
 
         self.signals = SignalsContainer(self)
         self.signals.attach(RedisChannelObserver())
 
-        if not automation:
+        if not self.automation:
             self.signals.attach(PerformanceCrawlObserver())
             self.signals.attach(HistoryCrawlObserver())
 
         self.can_crawl: bool = True
+
+        if not self.automation and bool(self.redis_client):
+            self.redis_client.sadd(
+                self.urls_to_visit_storage_key,
+                str(self.start_url)
+            )
 
     def __repr__(self):
         return f"<{self.__class__.__name__} job_uuid={self.job_uuid}>"
@@ -175,17 +163,6 @@ class BaseSpider(ABC):
         return f"{self.__class__.__name__}:{self.job_uuid}:seen_urls"
 
     @property
-    def urls_to_visit(self) -> Sequence[URL]:
-        """Return the list of URLs to visit from the Redis set."""
-        urls: list[URL] = []
-
-        members = self.redis_client.smembers(self.urls_to_visit_key)
-        for str_url in members:
-            urls.append(URL(str_url))
-
-        return urls if urls else []
-
-    @property
     def pagination_storage_key(self):
         """Redis storage key for pagination state."""
         return f"{self.__class__.__name__}:{self.job_uuid}:pagination"
@@ -194,6 +171,22 @@ class BaseSpider(ABC):
     def processed_storage_key(self):
         """Redis storage key for processed files, urls..."""
         return f"{self.__class__.__name__}:{self.job_uuid}:processed"
+
+    @property
+    def performance_storage_key(self):
+        """Redis storage key for performance data."""
+        return f"{self.__class__.__name__}:{self.job_uuid}:performance"
+
+    @property
+    def urls_to_visit(self) -> Sequence[URL]:
+        """Return the list of URLs to visit from the Redis set."""
+        urls: list[URL] = []
+
+        members = self.redis_client.smembers(self.urls_to_visit_storage_key)
+        for str_url in members:
+            urls.append(URL(str_url))
+
+        return urls if urls else []
 
     @staticmethod
     async def url_to_str(urls: TypeUrls) -> Sequence[str]:
@@ -217,6 +210,9 @@ class BaseSpider(ABC):
         return list(filter(lambda u: u.is_not_none, hrefs))
 
     @abstractmethod
+    async def callback_function(self, event: asyncio.Event, *args, **kwargs):
+        pass
+
     async def run(self, browser: Browser, ignore_queries: bool = True, ignore_fragments: bool = True):
         """Main entrypoint that runs either the automation or the crawling process.
         Args:
@@ -256,76 +252,48 @@ class BaseSpider(ABC):
         if debug_mode:
             interval = 1
 
-        if self.automation:
-            logger.info("Starting automation...")
-            # await self.automate()
+        logger.info(f"Spider interval set to {interval} seconds.")
 
-            event: asyncio.Event = asyncio.Event()
-            event.set()
-            
-            schedule.every(interval).seconds.do(lambda: asyncio.create_task(self.automate()))
-            
-            while event.is_set():
-                schedule.run_pending()
-                await asyncio.sleep(1)
+        # Shared event used to control the state 
+        # of the automation or crawling loop.
+        stop_event: asyncio.Event = asyncio.Event()
+        stop_event.set()
 
-                if debug_mode:
-                    event.clear()
-                    logger.info("Debug mode active, stopping automation loop.")
+        # def runner(*args, **kwargs):
+        #     asyncio.create_task(self.callback_function(event=event))
+
+        # This is the main section that handles the scheduling 
+        # and execution of the automation or crawling tasks.
+        # schedule.every(interval).seconds.do(runner)
+    
+        # wrapped_func = CallbackRunner(self)
+        # schedule.every(interval).seconds.do(lambda: asyncio.create_task(wrapped_func()))
+
+        job = simplecron_base.every(interval).seconds
+        if debug_mode:
+            job.with_limited_runs(3).do(self.callback_function(event=stop_event))
         else:
-            urls = await self.get_page_links()
-            await self._add_urls_to_redis(urls)
+            job.do(self.callback_function(event=stop_event))
 
-            schedule.every(interval).seconds.do(lambda: asyncio.create_task(self.crawl()))
-
-            # This is the section that
-            # handles crawling from page to page
-            if self.redis_client is not None:
-                self.can_crawl: bool = True
-                while self.can_crawl:
-                    schedule.run_pending()
-                    await asyncio.sleep(1)
-
-    async def crawl(self):
-        current_url = self.redis_client.spop(self.urls_to_visit_key, 1)
-        if not current_url:
-            logger.info("No more URLs to crawl.")
-            self.can_crawl = False
-            return
-
-        next_url = URL(
-            current_url[0].decode('utf-8'), 
-            root_domain=self._accepted_domain
-        )
-        if not next_url.is_valid:
-            logger.warning(f"Invalid URL encountered: {next_url}")
-            return
-
-        logger.info(f"Navigating to next URL: {next_url}")
-        await self.page.goto(
-            str(next_url),
-            timeout=self.default_timeout,
-            wait_until='domcontentloaded'
-        )
-
-        self.redis_client.sadd(self.visited_urls_key, str(next_url))
-        urls = await self.get_page_links()
-
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._add_urls_to_redis(urls))
+        context = {}
+        while not stop_event.is_set():
+            if context is not None:
+                context["stop_event"] = stop_event
 
             try:
-                await tg.create_task(self.on_page_actions(current_url, tg=tg))
-            except (TypeError, ValueError) as e:
-                logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
+                while not stop_event.is_set():
+                    simplecron_base.run_pending(context=context)
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(stop_event.wait(), timeout=1.0)
+            finally:
+                await simplecron_base._shutdown()
 
-            await tg.create_task(self.signals.notify(current_url=next_url))
+            # schedule.run_pending()
+            # await asyncio.sleep(1)
 
-        await asyncio.sleep(IN_BETWEEN_PAGE_DELAY)
-
-        if ENV.boolean('DEBUG', default=False):
-            self.can_crawl = False
-            return
+            # if debug_mode:
+            #     event.clear()
+            #     logger.info("Debug mode active, stopping automation loop.")
 
     async def _add_urls_to_redis(self, urls: TypeUrls):
         """Add a sequence or generator of URLs to the Redis sets 
@@ -340,13 +308,8 @@ class BaseSpider(ABC):
             if not all_urls or not filtered_str_urls:
                 return
 
-            self.redis_client.sadd(self.urls_to_visit_key, *filtered_str_urls)
-            self.redis_client.sadd(self.seen_urls_key, *all_urls)
-
-    async def automate(self, *, event: asyncio.Event | None = None, from_file: str | None = None):
-        """Run automation actions on every page starting from the start URL."""
-        await self.on_page_actions(self.start_url, event=event)
-        await self.after_page_actions()
+            self.redis_client.sadd(self.urls_to_visit_storage_key, *filtered_str_urls)
+            self.redis_client.sadd(self.seen_urls_storage_key, *all_urls)
 
     async def get_page_links(self) -> Sequence[URL]:
         await asyncio.sleep(3)
@@ -438,3 +401,55 @@ class BaseSpider(ABC):
 
     async def after_page_actions(self):
         """Perform actions after interacting with the page."""
+
+
+class AutomationSpider(BaseSpider):
+    automation = True
+    
+    async def callback_function(self, *, event: asyncio.Event | None = None, from_file: str | None = None, **kwargs):
+        await self.on_page_actions(self.start_url, event=event, **kwargs)
+        await self.after_page_actions()
+
+
+class CrawlerSpider(BaseSpider):
+    async def callback_function(self, *args, event: asyncio.Event | None = None, **kwargs):
+        current_url = self.redis_client.spop(self.urls_to_visit_storage_key, 1)
+        if not current_url:
+            logger.info("No more URLs to crawl.")
+            self.can_crawl = False
+            return
+
+        next_url = URL(
+            current_url[0].decode('utf-8'), 
+            root_domain=self._accepted_domain
+        )
+        if not next_url.is_valid:
+            logger.warning(f"Invalid URL encountered: {next_url}")
+            return
+
+        logger.info(f"Navigating to next URL: {next_url}")
+        await self.page.goto(
+            str(next_url),
+            timeout=self.default_timeout,
+            wait_until='domcontentloaded'
+        )
+
+        self.redis_client.sadd(self.visited_urls_storage_key, str(next_url))
+        urls = await self.get_page_links()
+        print(urls)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self._add_urls_to_redis(urls))
+
+            try:
+                await tg.create_task(self.on_page_actions(current_url, event=event, tg=tg))
+            except (TypeError, ValueError) as e:
+                logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
+
+            await tg.create_task(self.signals.notify(current_url=next_url))
+
+        await asyncio.sleep(IN_BETWEEN_PAGE_DELAY)
+
+        if ENV.boolean('DEBUG', default=False):
+            self.can_crawl = False
+            return
