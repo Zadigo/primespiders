@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 from uuid import uuid4
 
+import polars
 import pydantic
 from playwright.async_api import Browser, Page
 from simplecron import base as simplecron_base
@@ -26,6 +27,25 @@ IN_BETWEEN_PAGE_DELAY = ENV.integer('IN_BETWEEN_PAGE_DELAY', default=10)
 DEFAULT_TIMEOUT = ENV.integer('DEFAULT_TIMEOUT', default=10000)
 
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _done_callback(task: asyncio.Task[Any]) -> None:
+    """Callback function to handle the completion of background tasks.
+
+    This function logs the status of the task, whether it was cancelled,
+    raised an exception, or completed successfully, and removes it from
+    the set of background tasks.
+    """
+    if task.cancelled():
+        logger.info(f"Task {task.get_name()} was cancelled.")
+        return
+
+    if (exc := task.exception()) is not None:
+        logger.error(f"Task {task.get_name()} raised an exception: {exc}")
+        return
+
+    _background_tasks.discard(task)
+    logger.info(f"Task {task.get_name()} completed successfully.")
 
 
 class EcommerceMixin:
@@ -137,7 +157,7 @@ class BaseSpider(ABC):
 
         self.can_crawl: bool = True
 
-        if not self.automation and bool(self.redis_client):
+        if bool(self.redis_client):
             self.redis_client.sadd(
                 self.urls_to_visit_storage_key,
                 str(self.start_url)
@@ -213,6 +233,12 @@ class BaseSpider(ABC):
     async def callback_function(self, event: asyncio.Event, *args, **kwargs):
         pass
 
+    async def terminate(self, event: asyncio.Event | None):
+        """Terminate the crawling or automation process by setting the stop event."""
+        await self.page.close()
+        if bool(event):
+            event.set()
+
     async def run(self, browser: Browser, ignore_queries: bool = True, ignore_fragments: bool = True):
         """Main entrypoint that runs either the automation or the crawling process.
         Args:
@@ -267,33 +293,20 @@ class BaseSpider(ABC):
 
         context: dict[str, Any] = {}
 
+        # Run this loop until the stop event is set. This allows the spider
+        # to periodically execute its callback function and check for the
+        # stop condition.
         while not stop_event.is_set():
             if context is not None:
                 context["stop_event"] = stop_event
 
             try:
-                while not stop_event.is_set():
-                    simplecron_base.run_pending(context=context)
-                    with contextlib.suppress(TimeoutError):
-                        await asyncio.wait_for(stop_event.wait(), timeout=1.0)
+                simplecron_base.run_pending(context=context)
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(stop_event.wait(), timeout=1.0)
             finally:
-                await simplecron_base._shutdown()
-
-        # def runner(*args, **kwargs):
-        #     asyncio.create_task(self.callback_function(event=event))
-
-        # This is the main section that handles the scheduling 
-        # and execution of the automation or crawling tasks.
-        # schedule.every(interval).seconds.do(runner)
-    
-        # wrapped_func = CallbackRunner(self)
-        # schedule.every(interval).seconds.do(lambda: asyncio.create_task(wrapped_func()))
-        # schedule.run_pending()
-        # await asyncio.sleep(1)
-
-        # if debug_mode:
-        #     event.clear()
-        #     logger.info("Debug mode active, stopping automation loop.")
+                await self.page.close()
+                await simplecron_base.default_scheduler._shutdown()
 
     async def _add_urls_to_redis(self, urls: TypeUrls):
         """Add a sequence or generator of URLs to the Redis sets 
@@ -407,8 +420,31 @@ class AutomationSpider(BaseSpider):
     automation = True
     
     async def callback_function(self, *args, event: asyncio.Event | None = None, from_file: str | None = None, **kwargs):
-        await self.on_page_actions(self.start_url, event=event, **kwargs)
-        await self.after_page_actions()
+        await self.before_page_actions()
+
+        if from_file is not None:
+            df = polars.read_csv(from_file)
+            if not 'urls' in df.columns:
+                await self.terminate(event)
+                raise ValueError("CSV file must contain a 'urls' column.")
+            
+            urls = df['urls'].to_list()
+            if bool(self.redis_client):
+                self.redis_client.sadd(self.urls_to_visit_storage_key, *urls)
+
+        current_url = self.redis_client.spop(self.urls_to_visit_storage_key, 1)
+        if not current_url:
+            logger.info("No more URLs to visit.")
+            await self.terminate(event)
+            return
+        
+        current_url = URL(current_url[0].decode('utf-8'))
+        await self.page.goto(str(current_url), wait_until='domcontentloaded')
+
+        try:
+            await self.on_page_actions(current_url, event=event, **kwargs)
+        finally:
+            await self.after_page_actions()
 
 
 class CrawlerSpider(BaseSpider):
@@ -420,7 +456,7 @@ class CrawlerSpider(BaseSpider):
             return
 
         next_url = URL(
-            current_url[0].decode('utf-8'), 
+            current_url[0].decode('utf-8'),  
             root_domain=self._accepted_domain
         )
         if not next_url.is_valid:
@@ -438,17 +474,33 @@ class CrawlerSpider(BaseSpider):
         urls = await self.get_page_links()
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._add_urls_to_redis(urls))
-
+            task = tg.create_task(self._add_urls_to_redis(urls))
+            task.add_done_callback(_done_callback)
+            _background_tasks.add(task)
+            
             try:
-                await tg.create_task(self.on_page_actions(current_url, event=event, tg=tg))
+                task = tg.create_task(self.on_page_actions(current_url, event=event, tg=tg))
+                task.add_done_callback(_done_callback)
+                _background_tasks.add(task)
             except (TypeError, ValueError) as e:
                 logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
 
-            await tg.create_task(self.signals.notify(current_url=next_url))
+            task = tg.create_task(
+                self.signals.notify(
+                    current_url=next_url,
+                    page_data={
+                        'page_urls': urls
+                    }
+                )
+            )
+            task.add_done_callback(_done_callback)
+            _background_tasks.add(task)
 
         await asyncio.sleep(IN_BETWEEN_PAGE_DELAY)
 
-        if ENV.boolean('DEBUG', default=False):
-            self.can_crawl = False
-            return
+        if (
+            bool(self.redis_client) and 
+            self.redis_client.scard(self.urls_to_visit_storage_key) == 0 and
+            bool(event)
+        ):
+            event.set()

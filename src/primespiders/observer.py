@@ -134,16 +134,6 @@ class PerformanceCrawlObserver(Observer):
             started_on = redis_db.hget(self.spider.performance_storage_key, 'started_on')
             if started_on is None:
                 redis_db.hset(self.spider.performance_storage_key, mapping={'started_on': str(current_date)})
-
-            # template = {
-            #     'urls_to_visit_count': urls_to_visit_count,
-            #     'visited_urls_count': visited_urls_count,
-            #     'seen_urls_count': seen_urls_count,
-            #     'completion_pct': round(completion_pct, 2),
-            #     'total_pct_urls_visited': round(total_pct_urls_visited, 2),
-            #     'last_seen_url': str(kwargs.get('current_url', '')),
-            #     'last_updated': str(current_date)
-            # }
             
             model = PerformanceModel(
                 urls_to_visit_count=urls_to_visit_count,
@@ -252,9 +242,6 @@ class RedisChannelObserver(Observer):
     """An observer that publishes updates to a Redis channel."""
 
     tag = 'redis'
-
-    def __init__(self):
-        super().__init__()
 
     async def update(self, **kwargs: Any) -> None:
         if self.spider.redis_client is not None:
