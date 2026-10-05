@@ -253,7 +253,7 @@ class BaseSpider(ABC):
         self.ignore_queries = ignore_queries
         self.ignore_fragments = ignore_fragments
 
-        if self.start_url is None:
+        if not bool(self.start_url):
             raise ValueError("start_url must be defined")
 
         self._accepted_domain = URL(self.start_url).domain
@@ -284,7 +284,6 @@ class BaseSpider(ABC):
         # of the automation or crawling loop.
         stop_event: asyncio.Event = asyncio.Event()
 
-
         job = simplecron_base.every(interval).seconds
         if debug_mode:
             job.with_limited_runs(3).do(self.callback_function, event=stop_event)
@@ -305,8 +304,9 @@ class BaseSpider(ABC):
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop_event.wait(), timeout=1.0)
             finally:
-                await self.page.close()
-                await simplecron_base.default_scheduler._shutdown()
+                pass
+                # await self.page.close()
+                # await simplecron_base.default_scheduler._shutdown()
 
     async def _add_urls_to_redis(self, urls: TypeUrls):
         """Add a sequence or generator of URLs to the Redis sets 
@@ -422,7 +422,7 @@ class AutomationSpider(BaseSpider):
     async def callback_function(self, *args, event: asyncio.Event | None = None, from_file: str | None = None, **kwargs):
         await self.before_page_actions()
 
-        if from_file is not None:
+        if bool(from_file):
             df = polars.read_csv(from_file)
             if not 'urls' in df.columns:
                 await self.terminate(event)
@@ -432,14 +432,16 @@ class AutomationSpider(BaseSpider):
             if bool(self.redis_client):
                 self.redis_client.sadd(self.urls_to_visit_storage_key, *urls)
 
-        current_url = self.redis_client.spop(self.urls_to_visit_storage_key, 1)
-        if not current_url:
-            logger.info("No more URLs to visit.")
-            await self.terminate(event)
-            return
-        
-        current_url = URL(current_url[0].decode('utf-8'))
-        await self.page.goto(str(current_url), wait_until='domcontentloaded')
+            current_url = self.redis_client.spop(self.urls_to_visit_storage_key, 1)
+            if not bool(current_url):
+                logger.info("No more URLs to visit.")
+                await self.terminate(event)
+                return
+            
+            current_url = URL(current_url[0].decode('utf-8'))
+            await self.page.goto(str(current_url), wait_until='domcontentloaded')
+        else:
+            current_url = self.start_url
 
         try:
             await self.on_page_actions(current_url, event=event, **kwargs)
