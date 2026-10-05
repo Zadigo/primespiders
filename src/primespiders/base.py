@@ -257,25 +257,16 @@ class BaseSpider(ABC):
         # Shared event used to control the state 
         # of the automation or crawling loop.
         stop_event: asyncio.Event = asyncio.Event()
-        stop_event.set()
 
-        # def runner(*args, **kwargs):
-        #     asyncio.create_task(self.callback_function(event=event))
-
-        # This is the main section that handles the scheduling 
-        # and execution of the automation or crawling tasks.
-        # schedule.every(interval).seconds.do(runner)
-    
-        # wrapped_func = CallbackRunner(self)
-        # schedule.every(interval).seconds.do(lambda: asyncio.create_task(wrapped_func()))
 
         job = simplecron_base.every(interval).seconds
         if debug_mode:
-            job.with_limited_runs(3).do(self.callback_function(event=stop_event))
+            job.with_limited_runs(3).do(self.callback_function, event=stop_event)
         else:
-            job.do(self.callback_function(event=stop_event))
+            job.do(self.callback_function, event=stop_event)
 
-        context = {}
+        context: dict[str, Any] = {}
+
         while not stop_event.is_set():
             if context is not None:
                 context["stop_event"] = stop_event
@@ -288,12 +279,21 @@ class BaseSpider(ABC):
             finally:
                 await simplecron_base._shutdown()
 
-            # schedule.run_pending()
-            # await asyncio.sleep(1)
+        # def runner(*args, **kwargs):
+        #     asyncio.create_task(self.callback_function(event=event))
 
-            # if debug_mode:
-            #     event.clear()
-            #     logger.info("Debug mode active, stopping automation loop.")
+        # This is the main section that handles the scheduling 
+        # and execution of the automation or crawling tasks.
+        # schedule.every(interval).seconds.do(runner)
+    
+        # wrapped_func = CallbackRunner(self)
+        # schedule.every(interval).seconds.do(lambda: asyncio.create_task(wrapped_func()))
+        # schedule.run_pending()
+        # await asyncio.sleep(1)
+
+        # if debug_mode:
+        #     event.clear()
+        #     logger.info("Debug mode active, stopping automation loop.")
 
     async def _add_urls_to_redis(self, urls: TypeUrls):
         """Add a sequence or generator of URLs to the Redis sets 
@@ -406,7 +406,7 @@ class BaseSpider(ABC):
 class AutomationSpider(BaseSpider):
     automation = True
     
-    async def callback_function(self, *, event: asyncio.Event | None = None, from_file: str | None = None, **kwargs):
+    async def callback_function(self, *args, event: asyncio.Event | None = None, from_file: str | None = None, **kwargs):
         await self.on_page_actions(self.start_url, event=event, **kwargs)
         await self.after_page_actions()
 
@@ -436,7 +436,6 @@ class CrawlerSpider(BaseSpider):
 
         self.redis_client.sadd(self.visited_urls_storage_key, str(next_url))
         urls = await self.get_page_links()
-        print(urls)
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self._add_urls_to_redis(urls))
