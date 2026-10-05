@@ -6,8 +6,10 @@ import httpx2
 from primespiders.base import AutomationSpider
 from primespiders.components.ifop.models import IfopStudyModel
 from primespiders.utils.dates import parse_date
+from primespiders.utils.decorators import prevent_side_effects
 
 
+@prevent_side_effects
 async def download_pdf_file(spider: AutomationSpider, model: IfopStudyModel):
     async with asyncio.Semaphore(5), httpx2.AsyncClient() as client:
         files = spider.redis_client.smembers(spider.processed_storage_key)
@@ -34,6 +36,8 @@ async def download_pdf_file(spider: AutomationSpider, model: IfopStudyModel):
 
 
 class IfopSpider(AutomationSpider):
+    start_url = "https://www.ifopgroup.com/journalistes/?s=&search_marques%5B%5D=ifop-opinion"
+
     async def before_page_actions(self):
         if self.redis_client is not None:
             current_page = self.redis_client.get(self.pagination_storage_key)
@@ -49,6 +53,10 @@ class IfopSpider(AutomationSpider):
             for index, handle in enumerate(pagination_handles):
                 if index == self.redis_client.get(self.pagination_storage_key):
                     break
+
+            await handle.click()
+            async with self.page.expect_navigation():
+                await self.page.wait_for_selector('.section__search-grid')
 
     async def on_page_actions(self, current_url, **kwargs):
         articles = await self.page.query_selector_all('.card__journalist')
@@ -77,7 +85,10 @@ class IfopSpider(AutomationSpider):
                     json_data['pdf_url'] = await pdf_handle.get_attribute('href')
 
                 model = IfopStudyModel(**json_data)
-                tg.create_task(download_pdf_file(self, model))
+                
+                # task = tg.create_task(download_pdf_file(self, model))
+                # task.add_done_callback(done_callback)
+                # BACKGROUND_TASKS.add(task)
 
                 if self.redis_client is not None:
                     self.redis_client.sadd(self.processed_storage_key, model.slug)

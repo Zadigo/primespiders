@@ -276,7 +276,7 @@ class BaseSpider(ABC):
 
         debug_mode = ENV.boolean('DEBUG', default=False)
         if debug_mode:
-            interval = 1
+            interval = 2
 
         logger.info(f"Spider interval set to {interval} seconds.")
 

@@ -22,7 +22,6 @@ async def main(
     headless: bool = False, 
     ignore_queries: bool = True, 
     ignore_fragments: bool = True, 
-    automate: bool = False, 
     file: str | None = None,
     klass_name: str | None = None,
     tabs: int = 1
@@ -72,7 +71,7 @@ async def main(
             if candidate is None:
                 raise SystemExit(f"No suitable candidate class found in module {mod.__name__}")
 
-            instance = candidate(page, with_id=with_id, automation=automate)
+            instance = candidate(page, with_id=with_id)
 
             if tabs > 1:
                 instance.multi_tab_mode = True
@@ -135,13 +134,6 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--automate",
-        action="store_true",
-        default=False,
-        help="Run automation on a page without crawling"
-    )
-
-    parser.add_argument(
         "--file",
         type=str,
         default=None,
@@ -173,7 +165,6 @@ if __name__ == '__main__':
                 headless=args.headless, 
                 ignore_queries=args.ignore_queries,
                 ignore_fragments=args.ignore_fragments,
-                automate=args.automate,
                 file=args.file,
                 klass_name=args.klass_name,
                 tabs=args.tabs,
