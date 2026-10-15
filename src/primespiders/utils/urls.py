@@ -98,6 +98,21 @@ class URL:
         """Return the domain part of the URL as a URL object."""
         return self.parsed_url.netloc
 
+    @property
+    def is_social_media(self):
+        social_media_domains = [
+            "facebook.com",
+            "twitter.com",
+            "instagram.com",
+            "linkedin.com",
+            "tiktok.com",
+            "youtube.com",
+            "pinterest.com",
+            "reddit.com",
+            "github.com"
+        ]
+        return any(domain in self.domain for domain in social_media_domains)    
+
     # @property
     # def full_url(self):
     #     """Return the full URL, including the 

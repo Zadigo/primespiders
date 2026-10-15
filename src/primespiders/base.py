@@ -299,7 +299,6 @@ class BaseSpider(ABC):
         job = simplecron_base.every(interval).seconds
         if debug_mode:
             job.with_limited_runs(3).do(self.callback_function, event=stop_event)
-            # await self.callback_function(event=stop_event)
         else:
             job.do(self.callback_function, event=stop_event)
 
