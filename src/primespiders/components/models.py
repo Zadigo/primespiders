@@ -28,6 +28,11 @@ class BaseStudyModel(BaseModel):
         default=None,
         description="The slug of the publication"
     )
+    url: str | None = Field(
+        default=None,
+        description="The URL of the publication"
+    )
+    
 
     @field_validator('year')
     @classmethod
