@@ -13,7 +13,6 @@ from primespiders.url_filters import (
 )
 from primespiders.utils import logger
 from primespiders.utils.operators import And, Q, Rules
-from primespiders.utils.urls import URL
 
 
 class Bershka(CrawlerSpider):
@@ -29,12 +28,10 @@ class Bershka(CrawlerSpider):
             ignore_social_media
         ]
 
-    def check_is_product_page(self, url: URL) -> bool:
-        """Implement this method to check if the given URL corresponds to a product page."""
-        return False
-
     async def on_page_actions(self, current_url, tg: asyncio.TaskGroup | None = None, **kwargs):
-        if self.check_is_product_page(current_url):
+        title = self.page.locator('h1[class^="product-title"]')
+
+        if bool(title):
             template = {
                 'title': None,
                 'unit_price': None,
