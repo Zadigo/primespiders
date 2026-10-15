@@ -63,6 +63,7 @@ class IfopSpider(AutomationSpider):
     async def on_page_actions(self, current_url: URL, **kwargs):
         articles = await self.page.query_selector_all('.card__journalist')
 
+        models = []
         async with asyncio.TaskGroup() as tg:
             for article in articles:
                 json_data: dict = {}
@@ -87,20 +88,21 @@ class IfopSpider(AutomationSpider):
                     json_data['pdf_url'] = await pdf_handle.get_attribute('href')
 
                 model = IfopStudyModel(**json_data)
-                if model.url is not None:
-                    await self.page.goto(str(model.url))
-                    await self.page.wait_for_event('load')
 
-                    abstract_title = await self.page.query_selector('.single__post-title')
-                    if abstract_title is not None:
-                        model.abstract_title = await abstract_title.inner_text()
+                # if model.url is not None:
+                #     await self.page.goto(str(model.url))
+                #     await self.page.wait_for_event('load')
 
-                    abstract_text = await self.page.query_selector('.acf-innerblocks-container')
-                    if abstract_text is not None:
-                        model.abstract_text = await abstract_text.inner_text()
+                #     abstract_title = await self.page.query_selector('.single__post-title')
+                #     if abstract_title is not None:
+                #         model.abstract_title = await abstract_title.inner_text()
 
-                    await self.page.go_back()
-                    await asyncio.sleep(1)
+                #     abstract_text = await self.page.query_selector('.acf-innerblocks-container')
+                #     if abstract_text is not None:
+                #         model.abstract_text = await abstract_text.inner_text()
+
+                #     await self.page.go_back()
+                #     await asyncio.sleep(1)
 
                 # task = tg.create_task(download_pdf_file(self, model))
                 # task.add_done_callback(done_callback)
@@ -110,4 +112,8 @@ class IfopSpider(AutomationSpider):
                     self.processed_data_storage_key, 
                     model.slug
                 )
+
+                models.append(model)
+
+        return models
 

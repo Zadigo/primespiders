@@ -463,6 +463,9 @@ class AutomationSpider(BaseSpider):
 
         try:
             result = await self.on_page_actions(current_url, **kwargs)
+        except (TypeError, ValueError, RuntimeError) as e:
+            logger.error(f"Error occurred during on_page_actions: {e}")
+        else:
             await self.signals.save_item(result)
         finally:
             await self.after_page_actions()

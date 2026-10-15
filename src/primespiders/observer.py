@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import inspect
 import io
 import json
 import mimetypes
@@ -105,8 +104,6 @@ class SignalsContainer(BaseSignalsContainer):
         """
         if not bool(data):
             return True
-
-        
 
         instance = get_redis()
         if instance is not None:
@@ -291,25 +288,24 @@ class RedisChannelObserver(Observer):
     tag = 'redis'
 
     async def update(self, **kwargs: Any) -> None:
-        if self.spider.redis_client is not None:
-            clean_values: dict = {}
-            for key, value in kwargs.items():
-                if isinstance(value, (str, int, float, bool)):
-                    clean_values[key] = value
-                    continue
+        clean_values: dict = {}
+        for key, value in kwargs.items():
+            if isinstance(value, (str, int, float, bool)):
+                clean_values[key] = value
+                continue
 
-                if isinstance(value, uuid.UUID):
-                    clean_values[key] = str(value)
-                    continue
+            if isinstance(value, uuid.UUID):
+                clean_values[key] = str(value)
+                continue
 
-                if isinstance(value, pydantic.BaseModel):
-                    clean_values[key] = value.model_dump()
-                    continue
+            if isinstance(value, pydantic.BaseModel):
+                clean_values[key] = value.model_dump()
+                continue
 
-            self.spider.redis_client.publish(
-                self.spider.pub_sub_channel_key,
-                json.dumps(clean_values)
-            )
+        self.spider.redis_client.publish(
+            self.spider.pub_sub_channel_key,
+            json.dumps(clean_values)
+        )
 
 
 class S3Observer(Observer):
