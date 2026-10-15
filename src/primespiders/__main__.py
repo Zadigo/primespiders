@@ -4,7 +4,9 @@ import inspect
 import os
 import pathlib
 import pkgutil
+import threading
 from importlib import import_module
+from wsgiref.simple_server import WSGIServer
 
 from playwright.async_api import async_playwright
 
@@ -15,6 +17,21 @@ from primespiders.utils import logger
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 
 AVAILABLE = {m.name for m in pkgutil.iter_modules(components.__path__)}
+
+GLOBAL_TASKS: list[asyncio.Task] = []
+
+def shutdown_prometheus_server(wsgi_server: WSGIServer | None, thread: threading.Thread | None):
+    def cancel_wrapper(task: asyncio.Task):
+        if wsgi_server is not None:
+            wsgi_server.shutdown()
+            wsgi_server.server_close()
+
+        if thread is not None:
+            thread.join()
+
+        GLOBAL_TASKS.remove(task)
+    return cancel_wrapper
+
 
 async def main(
     app_name: str, 
@@ -45,6 +62,10 @@ async def main(
         except ModuleNotFoundError as e:
             await browser.close()
             logger.error("Cannot import component %r", e)
+            raise
+        except (TypeError, ValueError) as e:
+            await browser.close()
+            logger.error("Error importing component %r", e)
             raise
         else:
             if app_name not in AVAILABLE:
@@ -88,6 +109,38 @@ async def main(
             except (TypeError, ValueError) as e:
                 await browser.close()
                 raise ExceptionGroup("Error running spider", [e])
+
+            # server_event = asyncio.Event()
+
+            # _wsgi_server: WSGIServer = None
+            # _thread: threading.Thread = None
+
+            # async def run_prometheus_metrics():
+            #     logger.info("Starting Prometheus metrics server on port 8000")
+            #     await server_event.wait()
+            #     wsgi_server, wsgi_thread = start_http_server(8000)  # exposes metrics at http://localhost:8000/metrics
+            #     _wsgi_server, _thread = wsgi_server, wsgi_thread
+
+            # async with asyncio.TaskGroup() as tg:
+            #     t1 = tg.create_task(
+            #         instance.run(
+            #             browser=browser,
+            #             ignore_queries=ignore_queries,
+            #             ignore_fragments=ignore_fragments,
+            #         )
+            #     )
+
+            #     t2 = tg.create_task(
+            #         run_prometheus_metrics()
+            #     )
+                
+            #     t1.add_done_callback(lambda t: GLOBAL_TASKS.remove(t))
+            #     t2.add_done_callback(shutdown_prometheus_server(_wsgi_server, _thread))
+
+            #     GLOBAL_TASKS.extend([t1, t2])
+
+            #     if not t1.cancelled():
+            #         server_event.set()
             
             await browser.close()
 
@@ -151,6 +204,17 @@ if __name__ == '__main__':
         type=int,
         default=1,
         help="Specify the number of tabs to open"
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear the cache before running the spider"
+    )
+    parser.add_argument(
+        "--sessions",
+        type=int,
+        default=1,
+        help="Number of sessions to use"
     )
 
     args = parser.parse_args()

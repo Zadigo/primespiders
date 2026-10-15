@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import playwright
 import playwright.async_api
+import pydantic
 from redis import Redis
 
 if TYPE_CHECKING:
@@ -80,3 +81,5 @@ type TypeUrls = Sequence[URL] | Generator[URL]
 type TypeBaseSpider = BaseSpider
 
 type TypeSignalContainer = SignalsContainer
+
+type TypeOnPageActionsResult = pydantic.BaseModel | dict | list[dict | pydantic.BaseModel] | None

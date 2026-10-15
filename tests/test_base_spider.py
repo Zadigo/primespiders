@@ -1,11 +1,33 @@
-import os
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from primespiders.utils import ENV
 from primespiders.utils.operators import Q, Rules
 
-os.environ.setdefault('PRIMESPIDERS_ENV', 'test')
+ENV(DEBUG='true')
+
+@pytest.fixture
+def urls_fixture():
+    return [
+        'http://example.com/page1',
+        'http://example.com/page2',
+        'http://example.com/invalid-page'
+    ]
+
+
+@pytest.fixture
+def query_selector_all_fixture(urls_fixture):
+    return AsyncMock(
+        return_value=[
+            Mock(
+                get_attribute=AsyncMock(
+                    return_value=url
+                )
+            )
+            for url in urls_fixture
+        ]
+    )
 
 
 @pytest.mark.parametrize(
@@ -37,6 +59,14 @@ async def test_base_spider_runs(spider_fixture, testcase, urls):
         ]
     )
     await spider_fixture.run()
+
+
+
+async def test_base_spider_with_data(spider_with_data_fixture, browser_fixture, query_selector_all_fixture):
+    spider_with_data_fixture.start_url = "http://example.com"
+    spider_with_data_fixture.page.query_selector_all = query_selector_all_fixture
+    await spider_with_data_fixture.run(browser_fixture)
+
 
 
 async def test_with_filters(spider_fixture, mocked_query_selector):

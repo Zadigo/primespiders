@@ -14,7 +14,7 @@ from primespiders.utils.operators import And, Q, Rules
 
 
 class Bershka(EcommerceMixin, CrawlerSpider):
-    start_url: str | None = "https://www.bershka.com/fr/h-woman.html"
+    start_url: str | None = "https://www.bershka.com/fr/sitemap.html"
 
     @property
     def get_url_filters(self):

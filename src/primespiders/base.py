@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 from uuid import uuid4
 
@@ -16,7 +16,11 @@ from primespiders.observer import (
     RedisChannelObserver,
     SignalsContainer,
 )
-from primespiders.typings import EcommerceMixinProtocol, TypeUrls
+from primespiders.typings import (
+    EcommerceMixinProtocol,
+    TypeOnPageActionsResult,
+    TypeUrls,
+)
 from primespiders.utils import ENV, logger
 from primespiders.utils.clients import get_redis
 from primespiders.utils.operators import BaseCondition
@@ -26,10 +30,10 @@ IN_BETWEEN_PAGE_DELAY = ENV.integer('IN_BETWEEN_PAGE_DELAY', default=10)
 
 DEFAULT_TIMEOUT = ENV.integer('DEFAULT_TIMEOUT', default=10000)
 
-_background_tasks: set[asyncio.Task[Any]] = set()
+_background_tasks: set[asyncio.Task[TypeOnPageActionsResult]] = set()
 
 
-def _done_callback(task: asyncio.Task[Any]) -> None:
+def _done_callback(task: asyncio.Task[TypeOnPageActionsResult]) -> None:
     """Callback function to handle the completion of background tasks.
 
     This function logs the status of the task, whether it was cancelled,
@@ -167,6 +171,14 @@ class BaseSpider(ABC):
         return f"<{self.__class__.__name__} job_uuid={self.job_uuid}>"
 
     @property
+    def name(self):
+        return self.__class__.__name__
+
+    @property
+    def verbose_name(self):
+        return f"{self.__class__.__name__}:{self.job_uuid}"
+
+    @property
     def get_url_filters(self):
         return self.base_url_filters
 
@@ -188,7 +200,7 @@ class BaseSpider(ABC):
         return f"{self.__class__.__name__}:{self.job_uuid}:pagination"
 
     @property
-    def processed_storage_key(self):
+    def processed_data_storage_key(self):
         """Redis storage key for processed files, urls..."""
         return f"{self.__class__.__name__}:{self.job_uuid}:processed"
 
@@ -230,7 +242,7 @@ class BaseSpider(ABC):
         return list(filter(lambda u: u.is_not_none, hrefs))
 
     @abstractmethod
-    async def callback_function(self, event: asyncio.Event, *args, **kwargs):
+    async def callback_function(self, *args, **kwargs):
         pass
 
     async def terminate(self, event: asyncio.Event | None):
@@ -287,6 +299,7 @@ class BaseSpider(ABC):
         job = simplecron_base.every(interval).seconds
         if debug_mode:
             job.with_limited_runs(3).do(self.callback_function, event=stop_event)
+            # await self.callback_function(event=stop_event)
         else:
             job.do(self.callback_function, event=stop_event)
 
@@ -296,11 +309,8 @@ class BaseSpider(ABC):
         # to periodically execute its callback function and check for the
         # stop condition.
         while not stop_event.is_set():
-            if context is not None:
-                context["stop_event"] = stop_event
-
             try:
-                simplecron_base.run_pending(context=context)
+                simplecron_base.run_pending(context)
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop_event.wait(), timeout=1.0)
             finally:
@@ -345,6 +355,7 @@ class BaseSpider(ABC):
         hrefs = await self.str_to_url(str_hrefs, root_domain=self._accepted_domain)
 
         logger.info(f"Found {len(hrefs)} valid links on the page.")
+        # PROMETHEUS_SEEN_URLS('automation', str(self.job_uuid)).inc(amount=len(hrefs))
         return hrefs
 
     async def run_url_filters(self, urls: TypeUrls) -> Sequence[URL]:
@@ -399,27 +410,30 @@ class BaseSpider(ABC):
             accepted_urls.append(url)
 
         logger.info(f"Accepted {len(accepted_urls)} URLs after filtering.")
+        # PROMETHEUS_URLS_TO_VISIT(str(self.job_uuid)).inc(amount=len(urls))
         return accepted_urls
 
-    async def after_initial_navigation(self):
+    async def after_initial_navigation(self) -> Awaitable[None]:
         """Perform actions after the initial navigation occurs
         on the start URL. This is typically where you would handle 
         things like accepting cookies or closing pop-ups."""
 
-    async def before_page_actions(self):
+    async def before_page_actions(self) -> Awaitable[None]:
         """Perform actions before interacting with the page."""
 
-    async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any):
+    async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any) -> Awaitable[TypeOnPageActionsResult]:
         """Perform actions on the page after it has been loaded."""
 
-    async def after_page_actions(self):
+    async def after_page_actions(self) -> Awaitable[None]:
         """Perform actions after interacting with the page."""
 
 
 class AutomationSpider(BaseSpider):
     automation = True
     
-    async def callback_function(self, *args, event: asyncio.Event | None = None, from_file: str | None = None, **kwargs):
+    async def callback_function(self, *args, from_file: str | None = None, **kwargs):
+        event: asyncio.Event | None = kwargs.get('stop_event')
+
         await self.before_page_actions()
 
         if bool(from_file):
@@ -444,13 +458,17 @@ class AutomationSpider(BaseSpider):
             current_url = self.start_url
 
         try:
-            await self.on_page_actions(current_url, event=event, **kwargs)
+            result = await self.on_page_actions(current_url, **kwargs)
+            await self.signals.save_item(result)
         finally:
             await self.after_page_actions()
 
 
 class CrawlerSpider(BaseSpider):
-    async def callback_function(self, *args, event: asyncio.Event | None = None, **kwargs):
+    async def callback_function(self, *args, **kwargs):
+        event: asyncio.Event | None = kwargs.get('stop_event')
+        # PROMETHEUS_CRAWL_SCHEDULER_RUN(str(self.job_uuid)).inc()
+
         current_url = self.redis_client.spop(self.urls_to_visit_storage_key, 1)
         if not current_url:
             logger.info("No more URLs to crawl.")
@@ -476,18 +494,19 @@ class CrawlerSpider(BaseSpider):
         urls = await self.get_page_links()
 
         async with asyncio.TaskGroup() as tg:
-            task = tg.create_task(self._add_urls_to_redis(urls))
-            task.add_done_callback(_done_callback)
-            _background_tasks.add(task)
+            add_urls_task = tg.create_task(self._add_urls_to_redis(urls))
+            add_urls_task.add_done_callback(_done_callback)
+            _background_tasks.add(add_urls_task)
             
             try:
-                task = tg.create_task(self.on_page_actions(current_url, event=event, tg=tg))
-                task.add_done_callback(_done_callback)
-                _background_tasks.add(task)
+                on_page_task = tg.create_task(self.on_page_actions(current_url, event=event, tg=tg))
+                on_page_task.add_done_callback(_done_callback)
+                _background_tasks.add(on_page_task)
             except (TypeError, ValueError) as e:
+                # with PROMETHEUS_CRAWL_ON_PAGE_ACTIONS_FAILURES(str(self.job_uuid)).count_exceptions():
                 logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
 
-            task = tg.create_task(
+            notify_task = tg.create_task(
                 self.signals.notify(
                     current_url=next_url,
                     page_data={
@@ -495,8 +514,11 @@ class CrawlerSpider(BaseSpider):
                     }
                 )
             )
-            task.add_done_callback(_done_callback)
-            _background_tasks.add(task)
+            notify_task.add_done_callback(_done_callback)
+            _background_tasks.add(notify_task)
+
+        result = await on_page_task.result()
+        await self.signals.save_item(result)
 
         await asyncio.sleep(IN_BETWEEN_PAGE_DELAY)
 

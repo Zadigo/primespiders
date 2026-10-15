@@ -14,7 +14,7 @@ import boto3
 import pydantic
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
-from primespiders.typings import TypeBaseSpider, TypeURL
+from primespiders.typings import TypeBaseSpider, TypeOnPageActionsResult, TypeURL
 from primespiders.utils import DB_NAME, ENV, logger
 from primespiders.utils.clients import get_postgres, get_redis
 
@@ -74,19 +74,42 @@ class SignalsContainer(BaseSignalsContainer):
             tasks.append(asyncio.create_task(observer.update(current_url=current_url, **kwargs)))
         await asyncio.gather(*tasks)
                 
-    async def save_item(self, model: pydantic.BaseModel) -> str | None:
+    async def save_item(self, data: TypeOnPageActionsResult) -> bool:
         """A simple implementation to save scrapped items to Redis 
         and notify observers about the saved item.
         
         Args:
-            model (pydantic.BaseModel): The item model to be saved and notified about.
+            data (TypeOnPageActionsResult): The item model to be saved and notified about.
+
+        Returns:
+            bool: True if the item was successfully saved, False otherwise.
         """
+        if not bool(data):
+            return True
+
         instance = get_redis()
         if instance is not None:
-            storage_key = f"primespiders:{self._spider.job_uuid}:items"
-            await instance.rpush(storage_key, model.model_dump())
-            await self.notify(current_url=self._spider.start_url, item=model.model_dump())
-            return storage_key
+            _json_data: list[dict] | dict | None = None
+            if isinstance(data, dict):
+                _json_data = data
+            elif isinstance(data, pydantic.BaseModel):
+                _json_data = data.model_dump()
+            elif isinstance(data, list):
+                _json_data = []
+
+                for item in data:
+                    if isinstance(item, dict):
+                        _json_data.append(item)
+                    elif isinstance(item, pydantic.BaseModel):
+                        _json_data.append(item.model_dump())
+
+            if isinstance(_json_data, list):
+                await instance.rpush(self.processed_data_storage_key, *_json_data)
+            elif isinstance(_json_data, dict):
+                await instance.rpush(self.processed_data_storage_key, _json_data)
+            await self.notify(current_url=self._spider.start_url, item=_json_data)
+            return True
+        return False
 
 
 class Observer(ABC):
