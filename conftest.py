@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from playwright.async_api import Page
+from redis.client import Redis
 
 from primespiders.typings import TypeBaseSpider
 
@@ -17,8 +18,21 @@ def browser_fixture():
 
 
 @pytest.fixture
+def mock_spider_fixture():
+    from primespiders.base import BaseSpider
+    return Mock(
+        spec=BaseSpider,
+        job_uuid='test_uuid',
+        redis_client=Mock(
+            spec=Redis,
+            publish=Mock()
+        ),
+    )
+
+
+@pytest.fixture
 def spider_fixture(playwright_page):
-    from src.primespiders.base import BaseSpider
+    from primespiders.base import BaseSpider
 
     class SimpleSpider(BaseSpider):
         def __init__(self, page: Page):
@@ -48,7 +62,6 @@ def spider_with_data_fixture(playwright_page) -> TypeBaseSpider:
             return {'test': 'data'}
             
     return SimpleSpider(playwright_page)
-
 
 
 @pytest.fixture

@@ -135,7 +135,7 @@ class PerformanceCrawlObserver(Observer):
 
         redis_db = get_redis()
         if redis_db is not None:
-            # Get the count of URLs to visit, visited URLs, and seen URLs
+            # Get the count of of cached URLs to visit, visited URLs, and seen URLs
             urls_to_visit_count = redis_db.scard(self.spider.urls_to_visit_storage_key)
             visited_urls_count = redis_db.scard(self.spider.visited_urls_storage_key)
             seen_urls_count = redis_db.scard(self.spider.seen_urls_storage_key)
@@ -172,12 +172,12 @@ class PerformanceCrawlObserver(Observer):
             logger.info(f"Saved performance data. {model.completion_pct}% complete")
 
             # Send to Redis subscribers
-            redis_db.publish(str(self.spider.job_uuid), str(model.model_dump()))
+            redis_db.publish(str(self.spider.pub_sub_channel_key), str(model.model_dump()))
 
             other = json.dumps({
                 'urls_to_visit': await self.spider.url_to_str(self.spider.urls_to_visit)
             })
-            redis_db.publish(str(self.spider.job_uuid), other)
+            redis_db.publish(str(self.spider.pub_sub_channel_key), other)
             logger.info(f"Published URLs to visit: {len(self.spider.urls_to_visit)} urls")
 
 
@@ -283,7 +283,7 @@ class RedisChannelObserver(Observer):
                     continue
 
             self.spider.redis_client.publish(
-                f'primespiders__{self.spider.job_uuid}', 
+                self.spider.pub_sub_channel_key,
                 json.dumps(clean_values)
             )
 

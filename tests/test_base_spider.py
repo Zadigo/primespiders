@@ -61,7 +61,6 @@ async def test_base_spider_runs(spider_fixture, testcase, urls):
     await spider_fixture.run()
 
 
-
 async def test_base_spider_with_data(spider_with_data_fixture, browser_fixture, query_selector_all_fixture):
     spider_with_data_fixture.start_url = "http://example.com"
     spider_with_data_fixture.page.query_selector_all = query_selector_all_fixture

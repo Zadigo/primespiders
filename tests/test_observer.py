@@ -1,15 +1,19 @@
+import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
 import aiofiles
 import pytest
+from pydantic import BaseModel
 
 from primespiders.observer import (
     HistoryCrawlObserver,
     JsonFileObserver,
     PerformanceCrawlObserver,
+    RedisChannelObserver,
     S3Observer,
     SignalsContainer,
 )
+from primespiders.utils.clients import get_redis
 
 
 def test_signals_container_initialization():
@@ -53,23 +57,20 @@ async def test_signals_container_notification():
     )
 
 
-class TestPerformanceObserver:
-    async def test_initialization(self):
-        with patch('src.primespiders.observer.get_redis') as mget_redis:
+class TestPerformanceCrawlObserver:
+    async def test_update(self, mock_spider_fixture):
+        with patch('primespiders.observer.get_redis') as mget_redis:
             mget_redis.return_value.scard = Mock(return_value=0)
             mget_redis.return_value.hget = Mock(return_value=None)
             mget_redis.return_value.hset = Mock()
 
             observer = PerformanceCrawlObserver()
+            
+            mock_spider_fixture.url_to_str = AsyncMock(return_value=[])
+            mock_spider_fixture.urls_to_visit = set()
+            observer.spider = mock_spider_fixture
+            
             assert observer is not None
-
-            observer.spider = Mock(
-                name='Spider',
-                job_uuid='some_uuid',
-                urls_to_visit_key="some_value",
-                visited_urls_key="another_value",
-                seen_urls_key="yet_another_value",
-            )
             await observer.update(current_url="http://example.com")
 
     @pytest.mark.e2e
@@ -105,6 +106,48 @@ class TestS3Observer:
                 file_key='rapports-cours-compte/test_file.txt'
             )
 
+
+class TestSignalsContainer:
+    pass
+
+
+class TestRedisChannelObserver:
+    @pytest.mark.parametrize(
+        'datatype',
+        [
+           {'number': 1},
+           {'uuid': uuid.uuid4()},
+           {'model': Mock(spec=BaseModel, model_dump=Mock(return_value={}))}
+        ]
+    )
+    async def test_update(self, mock_spider_fixture, datatype):
+        observer = RedisChannelObserver()
+        observer.spider = mock_spider_fixture
+        await observer.update(**datatype)
+
+    @pytest.mark.e2e
+    @pytest.mark.parametrize(
+        'datatype',
+        [
+           {'number': 1},
+           {'uuid': uuid.uuid4()},
+           {'model': Mock(spec=BaseModel, model_dump=Mock(return_value={}))}
+        ]
+    )
+    async def test_update_e2e(self, mock_spider_fixture, datatype):
+        observer = RedisChannelObserver()
+        mock_spider_fixture.redis_client = get_redis()
+        mock_spider_fixture.pub_sub_channel_key = 'primespiders:test'
+        observer.spider = mock_spider_fixture
+        await observer.update(**datatype)
+
+
+class TestJsonFileObserver:
+    pass
+
+
+class TestHistoryCrawlObserver:
+    pass
 
 
 async def test_file_observer(tmp_path):
