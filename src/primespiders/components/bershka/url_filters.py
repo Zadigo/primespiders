@@ -21,6 +21,7 @@ def remove_static_page(url: URL):
         Q(Rules.CONTAINS, "company"),
         Q(Rules.CONTAINS, "guest-orders-validation"),
         Q(Rules.CONTAINS, "openwifi"),
+        Q(Rules.CONTAINS, "privacypolicy"),
     ]
     
     # return Or(url, *[rule(url) for rule in rules])

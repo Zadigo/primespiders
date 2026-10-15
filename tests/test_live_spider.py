@@ -22,7 +22,7 @@ async def test_bershka_spider():
 
         spider = Bershka(page)
         spider.start_url = 'https://www.bershka.com/fr/minijupe-en-jean-c0p227263455.html?colorId=428'
-        await spider.run()
+        await spider.run(browser)
 
         assert spider is not None
         await browser.close()
@@ -33,7 +33,7 @@ class TestCourtAuditSpider:
     async def test_get_pdf_content(self):
         spider = Mock()
         url = URL('https://www.ccomptes.fr/sites/default/files/2026-09/20261001-S2026-0891-Agence-de-l-innovation-de-defense-AID.pdf')
-        await get_pdf_content(spider, url)
+        await get_pdf_content(spider, url, None)
 
     async def test_live_spider(self):
         async with async_playwright() as p:
@@ -42,5 +42,5 @@ class TestCourtAuditSpider:
             await page.wait_for_selector('body')
 
             spider = CourtAuditSpider(page)
-            await spider.run()
+            await spider.run(browser)
             await browser.close()

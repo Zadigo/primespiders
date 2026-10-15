@@ -11,8 +11,9 @@ def get_redis():
     try:
         client.ping()
     except redis.ConnectionError:
-        logger.error("Failed to connect to Redis")
-        return None
+        # logger.error("Failed to connect to Redis")
+        # return None
+        raise ValueError("Failed to connect to Redis")
     else:
         return client
 

@@ -1,12 +1,12 @@
 import asyncio
 import contextlib
+import inspect
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from typing import Any
 from uuid import uuid4
 
 import polars
-import pydantic
 from playwright.async_api import Browser, Page
 from simplecron import base as simplecron_base
 
@@ -17,7 +17,6 @@ from primespiders.observer import (
     SignalsContainer,
 )
 from primespiders.typings import (
-    EcommerceMixinProtocol,
     TypeOnPageActionsResult,
     TypeUrls,
 )
@@ -29,6 +28,8 @@ from primespiders.utils.urls import URL
 IN_BETWEEN_PAGE_DELAY = ENV.integer('IN_BETWEEN_PAGE_DELAY', default=10)
 
 DEFAULT_TIMEOUT = ENV.integer('DEFAULT_TIMEOUT', default=10000)
+
+_onpage_background_tasks: set[asyncio.Task[TypeOnPageActionsResult]] = set()
 
 _background_tasks: set[asyncio.Task[TypeOnPageActionsResult]] = set()
 
@@ -52,27 +53,27 @@ def _done_callback(task: asyncio.Task[TypeOnPageActionsResult]) -> None:
     logger.info(f"Task {task.get_name()} completed successfully.")
 
 
-class EcommerceMixin:
-    items_storage_key: str | None = None
+# class EcommerceMixin:
+#     items_storage_key: str | None = None
 
-    async def get_products[T = pydantic.BaseModel](self: EcommerceMixinProtocol, model: T) -> Sequence[T]:
-        if self.redis_client is None or self.items_storage_key is None:
-            return []
+#     async def get_products[T = pydantic.BaseModel](self: EcommerceMixinProtocol, model: T) -> Sequence[T]:
+#         if self.redis_client is None or self.items_storage_key is None:
+#             return []
 
-        values = self.redis_client.lrange(self.items_storage_key, 0, -1)
-        return [model.model_validate_json(v) for v in values]
+#         values = self.redis_client.lrange(self.items_storage_key, 0, -1)
+#         return [model.model_validate_json(v) for v in values]
 
-    async def save_product[T = pydantic.BaseModel](self: EcommerceMixinProtocol, model: T) -> None:
-        if self.signals is not None:
-            self.items_storage_key = await self.signals.save_item(model)
+#     async def save_product[T = pydantic.BaseModel](self: EcommerceMixinProtocol, model: T) -> None:
+#         if self.signals is not None:
+#             self.items_storage_key = await self.signals.save_item(model)
 
-    def check_is_product_page(self: EcommerceMixinProtocol, url: URL) -> bool:
-        """Implement this method to check if the given URL corresponds to a product page."""
-        return False
+#     def check_is_product_page(self: EcommerceMixinProtocol, url: URL) -> bool:
+#         """Implement this method to check if the given URL corresponds to a product page."""
+#         return False
 
-    def check_is_category_page(self: EcommerceMixinProtocol, url: URL) -> bool:
-        """Implement this method to check if the given URL corresponds to a category page."""
-        return False
+#     def check_is_category_page(self: EcommerceMixinProtocol, url: URL) -> bool:
+#         """Implement this method to check if the given URL corresponds to a category page."""
+#         return False
 
 
 class MultiTabRunner:
@@ -416,18 +417,18 @@ class BaseSpider(ABC):
         # PROMETHEUS_URLS_TO_VISIT(str(self.job_uuid)).inc(amount=len(urls))
         return accepted_urls
 
-    async def after_initial_navigation(self) -> Awaitable[None]:
+    async def after_initial_navigation(self) -> None:
         """Perform actions after the initial navigation occurs
         on the start URL. This is typically where you would handle 
         things like accepting cookies or closing pop-ups."""
 
-    async def before_page_actions(self) -> Awaitable[None]:
+    async def before_page_actions(self) -> None:
         """Perform actions before interacting with the page."""
 
-    async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any) -> Awaitable[TypeOnPageActionsResult]:
+    async def on_page_actions(self, current_url: URL, *, tg: asyncio.TaskGroup | None = None, **kwargs: Any) -> TypeOnPageActionsResult:
         """Perform actions on the page after it has been loaded."""
 
-    async def after_page_actions(self) -> Awaitable[None]:
+    async def after_page_actions(self) -> None:
         """Perform actions after interacting with the page."""
 
 
@@ -455,7 +456,7 @@ class AutomationSpider(BaseSpider):
                 await self.terminate(event)
                 return
             
-            current_url = URL(current_url[0].decode('utf-8'))
+            current_url = URL(current_url[0])
             await self.page.goto(str(current_url), wait_until='domcontentloaded')
         else:
             current_url = self.start_url
@@ -478,10 +479,7 @@ class CrawlerSpider(BaseSpider):
             self.can_crawl = False
             return
 
-        next_url = URL(
-            current_url[0].decode('utf-8'),  
-            root_domain=self._accepted_domain
-        )
+        next_url = URL(current_url[0], root_domain=self._accepted_domain)
         if not next_url.is_valid:
             logger.warning(f"Invalid URL encountered: {next_url}")
             return
@@ -502,12 +500,33 @@ class CrawlerSpider(BaseSpider):
             _background_tasks.add(add_urls_task)
             
             try:
-                on_page_task = tg.create_task(self.on_page_actions(current_url, event=event, tg=tg))
-                on_page_task.add_done_callback(_done_callback)
-                _background_tasks.add(on_page_task)
+                async def consume_generator[T](return_value: Awaitable[T] | AsyncGenerator[T]) -> list[T]:
+                    if inspect.isasyncgen(return_value):
+                        results: list[T] = []
+                        try:
+                            async for item in return_value:
+                                results.append(item)  # or handle each item here
+                        finally:
+                            await return_value.aclose()
+                        return results
+
+                    if inspect.isawaitable(return_value):
+                        # Plain coroutine (e.g. `async def ... -> None`)
+                        value = await return_value
+                        return [] if value is None else [value]
+
+                    return return_value if isinstance(return_value, list) else [return_value]
+                
+                on_page_task = tg.create_task(consume_generator(self.on_page_actions(next_url, event=event, tg=tg)))
+
+                # on_page_task = tg.create_task(self.on_page_actions(next_url, event=event, tg=tg))
             except (TypeError, ValueError) as e:
                 # with PROMETHEUS_CRAWL_ON_PAGE_ACTIONS_FAILURES(str(self.job_uuid)).count_exceptions():
-                logger.error(f"Error during on_page_actions for URL {current_url}: {e}")
+                logger.error(f"Error during 'on_page_actions' for URL {next_url!s}: {e}")
+            else:
+                on_page_task.add_done_callback(_done_callback)
+                _onpage_background_tasks.add(on_page_task)
+
 
             notify_task = tg.create_task(
                 self.signals.notify(
@@ -520,8 +539,14 @@ class CrawlerSpider(BaseSpider):
             notify_task.add_done_callback(_done_callback)
             _background_tasks.add(notify_task)
 
-        result = await on_page_task.result()
-        await self.signals.save_item(result)
+        # Once the task completes, we retrieve 
+        # the result from the on_page_task and
+        # send the result to the signals for saving
+        for task in _onpage_background_tasks:
+            if task.done():
+                result = task.result()
+                await self.signals.save_item(result)
+                _onpage_background_tasks.remove(task)
 
         await asyncio.sleep(IN_BETWEEN_PAGE_DELAY)
 

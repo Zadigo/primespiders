@@ -1,6 +1,8 @@
 import asyncio
 
-from primespiders.base import CrawlerSpider, EcommerceMixin
+from playwright.async_api import TimeoutError
+
+from primespiders.base import CrawlerSpider
 from primespiders.components.bershka.models import ProductModel
 from primespiders.components.bershka.url_filters import remove_static_page
 from primespiders.url_filters import (
@@ -11,9 +13,10 @@ from primespiders.url_filters import (
 )
 from primespiders.utils import logger
 from primespiders.utils.operators import And, Q, Rules
+from primespiders.utils.urls import URL
 
 
-class Bershka(EcommerceMixin, CrawlerSpider):
+class Bershka(CrawlerSpider):
     start_url: str | None = "https://www.bershka.com/fr/sitemap.html"
 
     @property
@@ -26,8 +29,9 @@ class Bershka(EcommerceMixin, CrawlerSpider):
             ignore_social_media
         ]
 
-    async def run(self, **kwargs):
-        await super().run(**kwargs)
+    def check_is_product_page(self, url: URL) -> bool:
+        """Implement this method to check if the given URL corresponds to a product page."""
+        return False
 
     async def on_page_actions(self, current_url, tg: asyncio.TaskGroup | None = None, **kwargs):
         if self.check_is_product_page(current_url):
@@ -51,7 +55,7 @@ class Bershka(EcommerceMixin, CrawlerSpider):
 
                 unit_price = await info_block.query_selector('span[class^="current-price"]')
                 if unit_price is not None:
-                    text_content = await unit_price.text_content()
+                    text_content = await unit_price.text_content() or ''
                     template['unit_price'] = float(text_content.replace('€', '').replace(',', '.'))
 
                 size_buttons = await info_block.query_selector_all('button[class^="size-button"]')
@@ -68,7 +72,9 @@ class Bershka(EcommerceMixin, CrawlerSpider):
 
                 template['url'] = str(current_url)
                 model = ProductModel(**template)
-                self.signals.notify(current_url=current_url, product=model.model_dump())
+
+                # self.signals.notify(current_url=current_url, product=model.model_dump())
+                yield model
 
     async def after_initial_navigation(self):
         # Cookie
@@ -83,9 +89,12 @@ class Bershka(EcommerceMixin, CrawlerSpider):
 
         try:
             language_modal = await self.page.wait_for_selector('.worldwide-actions', state='visible', timeout=10000)
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError) as e:
             logger.error(f"Error while waiting for language modal: {e}")
             return 
+        except TimeoutError as e:
+            logger.error(f"Timeout while waiting for language modal {e!s}")
+            return
         else:
             if language_modal is None:
                 return

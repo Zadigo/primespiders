@@ -1,13 +1,13 @@
 import asyncio
 import datetime
+import inspect
 import io
 import json
 import mimetypes
 import pathlib
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from typing import Any
+from typing import Any, ClassVar
 
 import aiofiles
 import boto3
@@ -64,7 +64,7 @@ class BaseSignalsContainer(ABC):
 
 
 class SignalsContainer(BaseSignalsContainer):
-    _observers: Sequence[Observer] = []
+    _observers: ClassVar[list[Observer]] = []
 
     def __init__(self, spider: TypeBaseSpider) -> None:
         self._spider = spider
@@ -78,7 +78,11 @@ class SignalsContainer(BaseSignalsContainer):
         self._observers.append(observer)
 
     def detach(self, observer: Observer) -> None:
-        self._observers = [obs for obs in self._observers if obs != observer]
+        # self._observers = [obs for obs in self._observers if obs != observer]
+        for obs in self._observers:
+            if obs == observer:
+                self._observers.remove(obs)
+                break
 
     async def notify(self, *, current_url: TypeURL | None = None, tag: str | None = None, **kwargs: Any) -> None:
         async with asyncio.TaskGroup() as tg:
@@ -102,9 +106,11 @@ class SignalsContainer(BaseSignalsContainer):
         if not bool(data):
             return True
 
+        
+
         instance = get_redis()
         if instance is not None:
-            _json_data: list[dict] | dict | None = None
+            _json_data: list[dict[str, Any]] | dict[str, Any] | None = None
             if isinstance(data, dict):
                 _json_data = data
             elif isinstance(data, pydantic.BaseModel):
@@ -119,9 +125,9 @@ class SignalsContainer(BaseSignalsContainer):
                         _json_data.append(item.model_dump())
 
             if isinstance(_json_data, list):
-                await instance.rpush(self.processed_data_storage_key, *_json_data)
+                instance.rpush(self._spider.processed_data_storage_key, *_json_data)
             elif isinstance(_json_data, dict):
-                await instance.rpush(self.processed_data_storage_key, _json_data)
+                instance.rpush(self._spider.processed_data_storage_key, _json_data)
             await self.notify(current_url=self._spider.start_url, item=_json_data)
             return True
         return False
@@ -145,8 +151,11 @@ class PerformanceCrawlObserver(Observer):
 
     tag = 'performance'
 
-    async def update(self, **kwargs) -> None:
+    async def update(self, **kwargs: Any) -> None:
         await super().update(**kwargs)
+
+        if self.spider is None:
+            raise ValueError("Observer is not attached to any spider.")
 
         redis_db = get_redis()
         if redis_db is not None:

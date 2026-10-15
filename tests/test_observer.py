@@ -128,6 +128,18 @@ class TestSignalsContainer:
             current_url="http://example.com"
         )
 
+    async def test_save_item(self, mock_spider_fixture):
+        container = SignalsContainer(mock_spider_fixture)
+
+        mocked_observer = Mock(spec=Observer)
+        container.attach(mocked_observer)
+        data = ({'key': 'value'} for _ in range(1))
+        await container.save_item(data)
+
+        mocked_observer.update.assert_called_once_with(
+            current_url="http://example.com"
+        )
+
 
 class TestRedisChannelObserver:
     @pytest.mark.parametrize(

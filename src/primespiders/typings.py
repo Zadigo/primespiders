@@ -82,4 +82,4 @@ type TypeBaseSpider = BaseSpider
 
 type TypeSignalContainer = SignalsContainer
 
-type TypeOnPageActionsResult = pydantic.BaseModel | dict | list[dict | pydantic.BaseModel] | None
+type TypeOnPageActionsResult = Generator[pydantic.BaseModel | dict | list[dict | pydantic.BaseModel] | None] | None

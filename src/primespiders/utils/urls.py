@@ -17,7 +17,7 @@ class URL:
         root_domain (str | None): The root domain for relative URLs.
     
     """
-    def __init__(self, url: str | bytes | None, root_domain: str | None = None):
+    def __init__(self, url: URL | str | bytes | None, root_domain: str | None = None):
         self.raw_url: str = ''
 
         if isinstance(url, bytes):
@@ -137,7 +137,7 @@ class URL:
         """Return the parts of the URL path as a list of strings."""
         return self.parsed_url.path.strip("/").split("/")
 
-    def check_domain(self, url: str) -> bool:
+    def check_domain(self, url: str | None) -> bool:
         return self.domain == url
 
     def increment(self, query_param: str = "page") -> URL:
