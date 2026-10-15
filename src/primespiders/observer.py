@@ -18,6 +18,20 @@ from primespiders.typings import TypeBaseSpider, TypeOnPageActionsResult, TypeUR
 from primespiders.utils import DB_NAME, ENV, logger
 from primespiders.utils.clients import get_postgres, get_redis
 
+_background_tasks: set[asyncio.Task] = set()
+
+def observer_done_callback(task: asyncio.Task) -> None:
+    if task.cancelled():
+        logger.info(f"Task {task.get_name()} was cancelled.")
+        return
+
+    if (exc := task.exception()) is not None:
+        logger.error(f"Task {task.get_name()} raised an exception: {exc}")
+        return
+
+    _background_tasks.discard(task)
+    logger.info(f"Task {task.get_name()} completed successfully.")
+
 
 class PerformanceModel(pydantic.BaseModel):
     urls_to_visit_count: int = pydantic.Field(default=0)
@@ -67,13 +81,14 @@ class SignalsContainer(BaseSignalsContainer):
         self._observers = [obs for obs in self._observers if obs != observer]
 
     async def notify(self, *, current_url: TypeURL | None = None, tag: str | None = None, **kwargs: Any) -> None:
-        tasks: list[asyncio.Task] = []
-        for observer in self._observers:
-            if tag is not None and observer.tag != tag:
-                continue
-            tasks.append(asyncio.create_task(observer.update(current_url=current_url, **kwargs)))
-        await asyncio.gather(*tasks)
-                
+        async with asyncio.TaskGroup() as tg:
+            for observer in self._observers:
+                if tag is not None and observer.tag != tag:
+                    continue
+                task = tg.create_task(observer.update(current_url=current_url, **kwargs))
+                task.add_done_callback(observer_done_callback)
+                _background_tasks.add(task)
+
     async def save_item(self, data: TypeOnPageActionsResult) -> bool:
         """A simple implementation to save scrapped items to Redis 
         and notify observers about the saved item.

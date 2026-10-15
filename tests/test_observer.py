@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from primespiders.observer import (
     HistoryCrawlObserver,
     JsonFileObserver,
+    Observer,
     PerformanceCrawlObserver,
     RedisChannelObserver,
     S3Observer,
@@ -108,7 +109,24 @@ class TestS3Observer:
 
 
 class TestSignalsContainer:
-    pass
+    async def test_attach(self, mock_spider_fixture):
+        container = SignalsContainer(mock_spider_fixture)
+        
+        mocked_observer = Mock(spec=Observer)
+        container.attach(mocked_observer)
+
+        assert len(container._observers) == 1
+
+    async def test_notify(self, mock_spider_fixture):
+        container = SignalsContainer(mock_spider_fixture)
+
+        mocked_observer = Mock(spec=Observer)
+        container.attach(mocked_observer)
+        await container.notify(current_url="http://example.com")
+
+        mocked_observer.update.assert_called_once_with(
+            current_url="http://example.com"
+        )
 
 
 class TestRedisChannelObserver:
