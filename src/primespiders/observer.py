@@ -129,7 +129,6 @@ class SignalsContainer(BaseSignalsContainer):
                 _str_json_data: list[str] = [
                     json.dumps(item) for item in _json_data
                 ]
-                print(_str_json_data)
                 instance.rpush(self._spider.processed_data_storage_key, *_str_json_data)
             elif isinstance(_json_data, dict):
                 instance.rpush(self._spider.processed_data_storage_key, json.dumps(_json_data))

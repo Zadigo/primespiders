@@ -6,6 +6,7 @@ from playwright.async_api import async_playwright
 
 from primespiders.components.bershka.app import Bershka
 from primespiders.components.courtaudit.app import CourtAuditSpider, get_pdf_content
+from primespiders.components.ifop.app import IfopSpider
 
 # from primespiders.utils import ENV
 from primespiders.utils.urls import URL
@@ -42,5 +43,23 @@ class TestCourtAuditSpider:
             await page.wait_for_selector('body')
 
             spider = CourtAuditSpider(page)
+            await spider.run(browser)
+            await browser.close()
+
+
+@pytest.mark.e2e
+class TestIfopSpider:
+    async def test_get_pdf_content(self):
+        spider = Mock()
+        url = URL('https://www.ccomptes.fr/sites/default/files/2026-09/20261001-S2026-0891-Agence-de-l-innovation-de-defense-AID.pdf')
+        # await get_pdf_content(spider, url, None)
+
+    async def test_live_spider(self):
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            page = await browser.new_page()
+            await page.wait_for_selector('body')
+
+            spider = IfopSpider(page)
             await spider.run(browser)
             await browser.close()
