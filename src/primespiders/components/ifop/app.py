@@ -68,6 +68,10 @@ class IfopSpider(AutomationSpider):
             for article in articles:
                 json_data: dict = {}
 
+                # article_body = await article.eva("document.querySelector('.card__search').parentElement.href")
+                # if article_body is not None:
+                #     json_data['url'] = await article_body.
+
                 date_handle = await article.query_selector('.card__journalist-date')
                 if date_handle is not None:
                     str_date = await date_handle.inner_text()
@@ -78,6 +82,10 @@ class IfopSpider(AutomationSpider):
                 title_handle = await article.query_selector('h3.card__journalist-title')
                 if title_handle is not None:
                     json_data['title'] = await title_handle.inner_text()
+
+                    url_handle = await title_handle.query_selector('a')
+                    if url_handle is not None:
+                        json_data['url'] = await url_handle.get_attribute('href')
 
                 abstract_handle = await article.query_selector('p.card__journalist-description')
                 if abstract_handle is not None:

@@ -3,11 +3,15 @@ import os
 import psycopg2
 import redis
 
-from primespiders.utils import logger
+from primespiders.utils import ENV, logger
 
 
 def get_redis():
-    client = redis.Redis(host='localhost', port=6379, db=0)
+    client = redis.Redis(
+        host=ENV.string("REDIS_HOST", "localhost"), 
+        port=6379, 
+        db=0
+    )
     try:
         client.ping()
     except redis.ConnectionError:

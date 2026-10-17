@@ -58,9 +58,9 @@ class BaseStudyModel(BaseModel):
         if values.get('title'):
             values['slug'] = create_slug(values['title'])
 
-        # date = values.get('date')
-        # year = values.get('year')
-        # if date is not None and year is None:
-        #     values['year'] = int(date.split('-')[0])
+        date = values.get('date')
+        year = values.get('year')
+        if date is not None and year is None:
+            values['year'] = int(date.split('-')[0])
 
         return values
