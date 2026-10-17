@@ -184,6 +184,10 @@ class BaseSpider(ABC):
         return self.base_url_filters
 
     @property
+    def base_storage_key(self):
+        return f"{self.__class__.__name__}:{self.job_uuid}"
+
+    @property
     def pub_sub_channel_key(self):
         return f"primespiders:{self.__class__.__name__}:{self.job_uuid}"
 

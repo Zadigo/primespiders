@@ -109,7 +109,7 @@ class IfopSpider(AutomationSpider):
                 # BACKGROUND_TASKS.add(task)
 
                 self.redis_client.sadd(
-                    self.processed_data_storage_key, 
+                    self.base_storage_key + ":slugs", 
                     model.slug
                 )
 

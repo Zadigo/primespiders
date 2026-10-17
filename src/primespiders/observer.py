@@ -121,10 +121,18 @@ class SignalsContainer(BaseSignalsContainer):
                     elif isinstance(item, pydantic.BaseModel):
                         _json_data.append(item.model_dump())
 
+            if _json_data is None:
+                return False
+
+
             if isinstance(_json_data, list):
-                instance.rpush(self._spider.processed_data_storage_key, *_json_data)
+                _str_json_data: list[str] = [
+                    json.dumps(item) for item in _json_data
+                ]
+                print(_str_json_data)
+                instance.rpush(self._spider.processed_data_storage_key, *_str_json_data)
             elif isinstance(_json_data, dict):
-                instance.rpush(self._spider.processed_data_storage_key, _json_data)
+                instance.rpush(self._spider.processed_data_storage_key, json.dumps(_json_data))
             await self.notify(current_url=self._spider.start_url, item=_json_data)
             return True
         return False
@@ -302,10 +310,11 @@ class RedisChannelObserver(Observer):
                 clean_values[key] = value.model_dump()
                 continue
 
-        self.spider.redis_client.publish(
-            self.spider.pub_sub_channel_key,
-            json.dumps(clean_values)
-        )
+        if self.spider is not None:
+            self.spider.redis_client.publish(
+                self.spider.pub_sub_channel_key,
+                json.dumps(clean_values)
+            )
 
 
 class S3Observer(Observer):
